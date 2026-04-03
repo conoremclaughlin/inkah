@@ -300,9 +300,7 @@ export default function App() {
         style={{
           display: 'flex',
           gap: 8,
-          marginTop: 16,
-          paddingTop: 12,
-          borderTop: `1px solid ${theme.border}`,
+          marginTop: 14,
         }}
       >
         <button
