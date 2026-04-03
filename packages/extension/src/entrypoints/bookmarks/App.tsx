@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { X, Download, Trash2 } from 'lucide-react';
 import type { PaginatedWords } from '../../data/words';
 import type { PaginatedSentences } from '../../data/sentences';
 
@@ -83,7 +84,7 @@ export default function BookmarksApp() {
         {/* Header */}
         <div style={styles.header}>
           <h1 style={styles.title}>Inkah Bookmarks</h1>
-          <button onClick={() => window.close()} style={styles.closeBtn}>X</button>
+          <button onClick={() => window.close()} style={styles.closeBtn}><X size={20} /></button>
         </div>
 
         <p style={styles.hint}>
@@ -112,7 +113,7 @@ export default function BookmarksApp() {
             <option value="zh">Chinese</option>
             <option value="ko">Korean</option>
           </select>
-          <button onClick={exportCsv} style={styles.exportBtn}>Export</button>
+          <button onClick={exportCsv} style={styles.exportBtn}><Download size={14} style={{ marginRight: 4, verticalAlign: -2 }} />Export</button>
         </div>
 
         {/* Table */}
@@ -165,7 +166,7 @@ function WordsTable({ data, onDelete }: { data: PaginatedWords | null; onDelete:
               {w.createdAt ? new Date(w.createdAt).toLocaleDateString() : ''}
             </td>
             <td style={styles.td}>
-              <button onClick={() => onDelete(w.word)} style={styles.deleteBtn}>Remove</button>
+              <button onClick={() => onDelete(w.word)} style={styles.deleteBtn}><Trash2 size={13} /></button>
             </td>
           </tr>
         ))}
@@ -205,7 +206,7 @@ function SentencesTable({ data, onDelete }: { data: PaginatedSentences | null; o
               {s.createdAt ? new Date(s.createdAt).toLocaleDateString() : ''}
             </td>
             <td style={styles.td}>
-              <button onClick={() => onDelete(s.sentence)} style={styles.deleteBtn}>Remove</button>
+              <button onClick={() => onDelete(s.sentence)} style={styles.deleteBtn}><Trash2 size={13} /></button>
             </td>
           </tr>
         ))}

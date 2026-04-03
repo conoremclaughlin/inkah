@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { X } from 'lucide-react';
 import type { Settings } from '../../data/settings';
 import { TonePresets } from '../../lib/available-languages';
 
@@ -91,7 +92,7 @@ export default function SettingsApp() {
       <div style={s.container}>
         <div style={s.header}>
           <h1 style={s.title}>Advanced Settings</h1>
-          <button onClick={() => window.close()} style={s.closeBtn}>X</button>
+          <button onClick={() => window.close()} style={s.closeBtn}><X size={20} /></button>
         </div>
 
         {/* Hot Key */}

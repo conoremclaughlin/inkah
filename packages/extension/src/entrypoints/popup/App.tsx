@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { Bookmark, Settings as SettingsIcon, MessageSquare } from 'lucide-react';
 import type { Settings } from '../../data/settings';
 import AvailableLanguages from '../../lib/available-languages';
 
@@ -308,12 +309,14 @@ export default function App() {
           onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('/bookmarks.html') })}
           style={buttonStyle}
         >
+          <Bookmark size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
           Bookmarks
         </button>
         <button
           onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('/settings.html') })}
           style={buttonStyle}
         >
+          <SettingsIcon size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
           Settings
         </button>
       </div>
@@ -326,6 +329,7 @@ export default function App() {
           rel="noopener noreferrer"
           style={{ fontSize: 12, color: theme.textSecondary, textDecoration: 'none' }}
         >
+          <MessageSquare size={12} style={{ marginRight: 4, verticalAlign: -2 }} />
           Feedback
         </a>
       </div>
