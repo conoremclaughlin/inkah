@@ -49,14 +49,16 @@ export default defineBackground(() => {
     }
   });
 
-  // Badge management
+  // Badge management — show "On"/"Off" on the extension icon
   const updateBadge = async (isEnabled?: boolean) => {
     if (isEnabled === undefined) {
       const result = await chrome.storage.local.get(['isEnabled']);
       isEnabled = result.isEnabled ?? true;
     }
-    await chrome.action.setBadgeText({ text: isEnabled ? '' : 'off' });
-    await chrome.action.setBadgeBackgroundColor({ color: '#666' });
+    await chrome.action.setBadgeText({ text: isEnabled ? 'On' : 'Off' });
+    await chrome.action.setBadgeBackgroundColor({
+      color: isEnabled ? '#177ddc' : '#999',
+    });
   };
 
   chrome.storage.onChanged.addListener((changes) => {

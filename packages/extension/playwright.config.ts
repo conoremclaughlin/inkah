@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const extensionPath = path.resolve(__dirname, '.output/chrome-mv3');
+const extensionPath = path.resolve(__dirname, 'dist/chrome-mv3');
 
 export default defineConfig({
   testDir: './e2e',
