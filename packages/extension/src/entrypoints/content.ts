@@ -17,8 +17,8 @@ const TONE_KEYS = [
 ] as const;
 
 const FONT_SIZES: Record<number, number> = {
-  1: 14,
-  2: 16,
+  1: 15,
+  2: 17,
   3: 20,
   4: 24,
   5: 27,
@@ -58,12 +58,17 @@ export default defineContentScript({
     // --- Hover detection state ---
     let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
     let lastPopup: HTMLElement | null = null;
+    // Track the currently hovered text position so popup stays fixed
+    let lockedRangeNode: Node | null = null;
+    let lockedRangeOffset = -1;
 
     function removePopup() {
       if (lastPopup) {
         lastPopup.remove();
         lastPopup = null;
       }
+      lockedRangeNode = null;
+      lockedRangeOffset = -1;
     }
 
     function isHoverKeyPressed(e: MouseEvent): boolean {
@@ -90,16 +95,26 @@ export default defineContentScript({
         : isKoreanLetter(charCode);
     }
 
+    interface CharAtPointResult {
+      char: string;
+      text: string;
+      rangeNode: Node;
+      rangeOffset: number;
+      rect: DOMRect;
+    }
+
     function getCharAtPoint(
       x: number,
       y: number,
-    ): { char: string; text: string } | null {
+    ): CharAtPointResult | null {
+      let range: Range | null = null;
       let rangeNode: Node | null = null;
       let rangeOffset = 0;
 
       if (document.caretRangeFromPoint) {
         const r = document.caretRangeFromPoint(x, y);
         if (!r) return null;
+        range = r;
         rangeNode = r.startContainer;
         rangeOffset = r.startOffset;
       } else if ((document as any).caretPositionFromPoint) {
@@ -116,8 +131,25 @@ export default defineContentScript({
       const charCode = textContent.codePointAt(rangeOffset);
       if (!charCode || !isTargetLanguageChar(charCode)) return null;
 
+      // Get the bounding rect of the hovered character for stable positioning
+      let rect: DOMRect;
+      if (range) {
+        range.setStart(rangeNode, rangeOffset);
+        range.setEnd(rangeNode, Math.min(rangeOffset + 1, textContent.length));
+        rect = range.getBoundingClientRect();
+      } else {
+        // Fallback: use cursor position
+        rect = new DOMRect(x, y, 0, 16);
+      }
+
       const lookupText = textContent.substring(rangeOffset, rangeOffset + 12);
-      return { char: textContent[rangeOffset], text: lookupText };
+      return {
+        char: textContent[rangeOffset],
+        text: lookupText,
+        rangeNode,
+        rangeOffset,
+        rect,
+      };
     }
 
     // --- Tone coloring ---
@@ -133,8 +165,7 @@ export default defineContentScript({
     // --- Popup rendering ---
     function createPopupElement(
       definitions: WordDefinitions[],
-      x: number,
-      y: number,
+      rect: DOMRect,
     ): HTMLElement {
       const isDark = settings?.isDarkModeOn ?? false;
       const charFontSize = FONT_SIZES[settings?.fontSize ?? 2] ?? 16;
@@ -142,15 +173,25 @@ export default defineContentScript({
       const container = document.createElement('div');
       container.id = 'inkah-popup';
 
-      // Position: clamp to viewport
+      // Position below the hovered text line, with right-edge flip
       const popupWidth = 420;
-      const leftPos = Math.min(x, window.innerWidth - popupWidth - 16);
-      const topPos = y + 20;
+      const vw = window.innerWidth;
+      const anchorLeft = rect.left;
+      const anchorBottom = rect.bottom + 10; // 10px gap below text
+
+      let leftPos: number;
+      if (anchorLeft + popupWidth + 16 > vw) {
+        // Near right edge — align popup's right edge to the text
+        leftPos = Math.max(8, rect.right - popupWidth);
+      } else {
+        leftPos = Math.max(8, anchorLeft);
+      }
+      const topPos = anchorBottom;
 
       container.style.cssText = `
         position: fixed;
         z-index: 2147483647;
-        left: ${Math.max(8, leftPos)}px;
+        left: ${leftPos}px;
         top: ${topPos}px;
         max-width: ${popupWidth}px;
         min-width: 280px;
@@ -360,6 +401,15 @@ export default defineContentScript({
           return;
         }
 
+        // If still hovering the same text node + offset, keep popup fixed
+        if (
+          lastPopup &&
+          lockedRangeNode === result.rangeNode &&
+          lockedRangeOffset === result.rangeOffset
+        ) {
+          return;
+        }
+
         try {
           const definitions = await sendToBackground<
             WordDefinitions[] | null
@@ -367,11 +417,9 @@ export default defineContentScript({
 
           if (definitions && definitions.length > 0) {
             removePopup();
-            lastPopup = createPopupElement(
-              definitions,
-              e.clientX,
-              e.clientY,
-            );
+            lockedRangeNode = result.rangeNode;
+            lockedRangeOffset = result.rangeOffset;
+            lastPopup = createPopupElement(definitions, result.rect);
             document.body.appendChild(lastPopup);
           } else {
             removePopup();

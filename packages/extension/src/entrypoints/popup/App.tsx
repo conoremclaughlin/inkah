@@ -244,7 +244,7 @@ export default function App() {
         onChange={(e) =>
           updateSetting({ fontSize: parseInt(e.target.value) })
         }
-        style={{ width: '100%', accentColor: '#177ddc' }}
+        style={{ width: '100%', accentColor: '#177ddc', outline: 'none' }}
       />
       <div
         style={{
@@ -290,7 +290,7 @@ export default function App() {
           onChange={(e) =>
             updateSetting({ lookUpDelay: parseInt(e.target.value) })
           }
-          style={{ width: 120, accentColor: '#177ddc' }}
+          style={{ width: 120, accentColor: '#177ddc', outline: 'none' }}
         />
       </SettingRow>
 
@@ -316,6 +316,18 @@ export default function App() {
         >
           Settings
         </button>
+      </div>
+
+      {/* Feedback */}
+      <div style={{ textAlign: 'center', marginTop: 10, paddingBottom: 4 }}>
+        <a
+          href="https://github.com/conoremclaughlin/inkah/issues"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 12, color: theme.textSecondary, textDecoration: 'none' }}
+        >
+          Feedback
+        </a>
       </div>
     </div>
   );
