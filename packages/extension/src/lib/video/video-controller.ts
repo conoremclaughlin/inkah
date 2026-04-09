@@ -322,14 +322,18 @@ export class VideoController {
     }
 
     this.settingsEl = document.createElement('div');
-    this.settingsEl.className = 'inkahsubs-settings';
+    this.settingsEl.className = 'inkahsubs-settings medium';
 
-    // Inkah logo icon
+    // Inkah logo icon — styled to match Netflix's control buttons
+    const iconBtn = document.createElement('button');
+    iconBtn.className = 'inkahsubs-settings-btn';
+    iconBtn.setAttribute('aria-label', 'Inkah Dictionary');
     const icon = document.createElement('img');
     icon.className = 'inkahsubs-settings-icon';
     icon.src = chrome.runtime.getURL('/images/inkah-logo-48.png');
     icon.alt = 'Inkah';
-    this.settingsEl.appendChild(icon);
+    iconBtn.appendChild(icon);
+    this.settingsEl.appendChild(iconBtn);
 
     // Settings dropdown
     const dropdown = document.createElement('div');
@@ -382,7 +386,15 @@ export class VideoController {
 
     // Insert into player controls
     if (isNetflix()) {
-      parentNode.appendChild(this.settingsEl);
+      // Insert before the fullscreen button for consistent placement
+      const fullscreenBtn = parentNode.querySelector('[data-uia="control-fullscreen-enter"], [data-uia="control-fullscreen-exit"]');
+      if (fullscreenBtn) {
+        // The button is wrapped in a div.medium container — insert before that
+        const btnContainer = fullscreenBtn.closest('.medium, [class*="1dcjcj4"]') ?? fullscreenBtn;
+        btnContainer.parentElement?.insertBefore(this.settingsEl, btnContainer);
+      } else {
+        parentNode.appendChild(this.settingsEl);
+      }
     } else {
       parentNode.prepend(this.settingsEl);
     }

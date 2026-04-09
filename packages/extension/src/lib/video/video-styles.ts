@@ -112,23 +112,35 @@ export const VIDEO_OVERLAY_CSS = `
   z-index: 100;
 }
 
-.inkahsubs-settings-icon {
-  width: 28px;
-  height: 28px;
+.inkahsubs-settings-btn {
+  background: none;
+  border: none;
   cursor: pointer;
-  opacity: 0.8;
-  transition: opacity 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
 }
 
-.inkahsubs-settings-icon:hover {
+.inkahsubs-settings-icon {
+  width: 24px;
+  height: 24px;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+  filter: brightness(10); /* Make white to match Netflix's icon style */
+}
+
+.inkahsubs-settings-btn:hover .inkahsubs-settings-icon {
   opacity: 1;
 }
 
 .inkahsubs-settings-wrapper {
   display: none;
   position: absolute;
-  bottom: 45px;
-  right: 0;
+  bottom: 55px;
+  right: -10px;
   background: #262a32;
   border-radius: 8px;
   padding: 16px;
