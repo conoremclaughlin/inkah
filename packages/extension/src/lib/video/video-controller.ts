@@ -9,6 +9,7 @@ import {
   isNetflix,
   isYouTube,
 } from './subtitle-utilities';
+import { INKAH_LOGO_SVG } from './inkah-logo-svg';
 
 type LookupFn = (text: string) => Promise<WordDefinitions[] | null>;
 type PopupFn = (definitions: WordDefinitions[], rect: DOMRect) => void;
@@ -136,14 +137,10 @@ export class VideoController {
 
   // === Mounting ===
 
-  /** Mount settings icon as soon as the controls bar is available */
+  /** Mount settings icon and set up observer for re-mounting */
   private mountSettingsWhenReady() {
-    // Try immediately
     this.mountSettings();
-    // Also observe for controls appearing later
-    if (!this.settingsEl) {
-      this.observeForControls();
-    }
+    this.setupPlayerObserver();
   }
 
   private mountAll() {
@@ -171,8 +168,7 @@ export class VideoController {
     this.subsContainer = null;
     this.rightPanel?.remove();
     this.rightPanel = null;
-    this.settingsEl?.remove();
-    this.settingsEl = null;
+    // Don't remove settings — they persist across subtitle changes
     this.progressBar?.remove();
     this.progressBar = null;
   }
@@ -322,120 +318,180 @@ export class VideoController {
   }
 
   // === Settings Icon ===
+  // Matches the old extension's exact pattern: MutationObserver on the player
+  // element to re-mount when Netflix/YouTube destroys and recreates controls.
 
+  private settingsTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+  private playerObserver: MutationObserver | null = null;
+
+  /** Idempotent mount — safe to call repeatedly from MutationObserver */
   private mountSettings() {
-    if (this.settingsEl) return;
+    // Idempotent: don't create duplicates
+    const existing = document.querySelector('.inkahsubs-settings');
+    if (existing) return;
 
-    let parentNode: Element | null = null;
+    // Find the fullscreen button as our anchor point (matches old code exactly)
+    let anchorNode: Element | null = null;
+
     if (isNetflix()) {
-      parentNode = document.querySelector('[data-uia="controls-standard"]');
+      anchorNode =
+        document.querySelector('[data-uia="control-fullscreen-enter"]') ??
+        document.querySelector('[data-uia="control-fullscreen-exit"]') ??
+        document.querySelector('[aria-label="Full screen"]') ??
+        document.querySelector('[aria-label="Exit full screen"]');
     } else if (isYouTube()) {
-      parentNode = document.querySelector('.ytp-right-controls');
+      anchorNode = document.querySelector('.ytp-fullscreen-button');
     }
 
-    if (!parentNode) {
-      // Controls may not be visible yet — observe for them
-      this.observeForControls();
-      return;
-    }
+    if (!anchorNode) return;
 
+    // Navigate up to find the right insertion parent
+    // Old code: referenceNode = node.parentNode, parentNode = referenceNode.parentNode
+    // Then: parentNode.insertBefore(settingNode, referenceNode)
+    const referenceNode = anchorNode.parentElement;
+    if (!referenceNode) return;
+    const parentNode = referenceNode.parentElement;
+    if (!parentNode) return;
+
+    // Create settings container
     this.settingsEl = document.createElement('div');
-    this.settingsEl.className = 'inkahsubs-settings medium';
+    this.settingsEl.className = 'inkahsubs-settings';
 
-    // Inkah logo icon — styled to match Netflix's control buttons
-    const iconBtn = document.createElement('button');
-    iconBtn.className = 'inkahsubs-settings-btn';
-    iconBtn.setAttribute('aria-label', 'Inkah Dictionary');
-    const icon = document.createElement('img');
-    icon.className = 'inkahsubs-settings-icon';
-    icon.src = chrome.runtime.getURL('/images/inkah-logo-48.png');
-    icon.alt = 'Inkah';
-    iconBtn.appendChild(icon);
-    this.settingsEl.appendChild(iconBtn);
+    // Build logo + dropdown
+    this.buildSettingsContent(this.settingsEl);
+
+    // Insert BEFORE the fullscreen button's container (old code's exact pattern)
+    parentNode.insertBefore(this.settingsEl, referenceNode);
+  }
+
+  private buildSettingsContent(container: HTMLElement) {
+    // Logo container with hover behavior (750ms delay like old code)
+    const logoContainer = document.createElement('div');
+    logoContainer.className = 'inkahsubs-settings-container-logo';
+    logoContainer.innerHTML = INKAH_LOGO_SVG;
 
     // Settings dropdown
     const dropdown = document.createElement('div');
     dropdown.className = 'inkahsubs-settings-wrapper';
 
-    const makeToggle = (
-      label: string,
-      checked: boolean,
-      onChange: (v: boolean) => void,
-    ) => {
-      const row = document.createElement('div');
-      row.className = 'inkahsubs-settings-row';
-
-      const lbl = document.createElement('span');
-      lbl.className = 'inkahsubs-settings-label';
-      lbl.textContent = label;
-      row.appendChild(lbl);
-
-      const toggle = document.createElement('label');
-      toggle.className = 'inkahsubs-toggle';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.checked = checked;
-      input.addEventListener('change', () => onChange(input.checked));
-      const track = document.createElement('span');
-      track.className = 'inkahsubs-toggle-track';
-      const thumb = document.createElement('span');
-      thumb.className = 'inkahsubs-toggle-thumb';
-      toggle.append(input, track, thumb);
-      row.appendChild(toggle);
-
-      return row;
+    // Hover behavior: 750ms delay on leave, instant on enter
+    const showDropdown = () => {
+      if (this.settingsTransitionTimer) {
+        clearTimeout(this.settingsTransitionTimer);
+        this.settingsTransitionTimer = null;
+      }
+      dropdown.style.display = 'block';
     };
 
+    const hideDropdown = () => {
+      this.settingsTransitionTimer = setTimeout(() => {
+        dropdown.style.display = 'none';
+      }, 750);
+    };
+
+    logoContainer.addEventListener('mouseenter', showDropdown);
+    logoContainer.addEventListener('mouseleave', hideDropdown);
+    logoContainer.addEventListener('click', () => {
+      dropdown.style.display =
+        dropdown.style.display === 'block' ? 'none' : 'block';
+    });
+
+    dropdown.addEventListener('mouseenter', () => {
+      if (this.settingsTransitionTimer) {
+        clearTimeout(this.settingsTransitionTimer);
+        this.settingsTransitionTimer = null;
+      }
+    });
+    dropdown.addEventListener('mouseleave', hideDropdown);
+
+    // Build settings controls
     dropdown.appendChild(
-      makeToggle('Right Panel', this.showRightPanel, (v) => {
+      this.makeToggleRow('Right Panel', this.showRightPanel, (v) => {
         this.showRightPanel = v;
         this.renderRightPanel();
       }),
     );
 
     dropdown.appendChild(
-      makeToggle('Background', this.showBackground, (v) => {
+      this.makeToggleRow('Background', this.showBackground, (v) => {
         this.showBackground = v;
         this.currentText = ''; // force re-render
       }),
     );
 
-    this.settingsEl.appendChild(dropdown);
-
-    // Insert into player controls
-    if (isNetflix()) {
-      // Insert before the fullscreen button for consistent placement
-      const fullscreenBtn = parentNode.querySelector('[data-uia="control-fullscreen-enter"], [data-uia="control-fullscreen-exit"]');
-      if (fullscreenBtn) {
-        // The button is wrapped in a div.medium container — insert before that
-        const btnContainer = fullscreenBtn.closest('.medium, [class*="1dcjcj4"]') ?? fullscreenBtn;
-        btnContainer.parentElement?.insertBefore(this.settingsEl, btnContainer);
-      } else {
-        parentNode.appendChild(this.settingsEl);
-      }
-    } else {
-      parentNode.prepend(this.settingsEl);
-    }
+    container.appendChild(logoContainer);
+    container.appendChild(dropdown);
   }
 
-  /** Observe DOM for Netflix/YouTube controls to appear, then mount settings icon */
-  private observeForControls() {
-    const selector = isNetflix()
-      ? '[data-uia="controls-standard"]'
-      : '.ytp-right-controls';
+  private makeToggleRow(
+    label: string,
+    checked: boolean,
+    onChange: (v: boolean) => void,
+  ): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'inkahsubs-settings-row';
 
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector(selector);
-      if (el && !this.settingsEl) {
-        observer.disconnect();
-        this.mountSettings();
-      }
+    const lbl = document.createElement('span');
+    lbl.className = 'inkahsubs-settings-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+
+    const toggle = document.createElement('label');
+    toggle.className = 'inkahsubs-toggle';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.addEventListener('change', () => onChange(input.checked));
+    const track = document.createElement('span');
+    track.className = 'inkahsubs-toggle-track';
+    const thumb = document.createElement('span');
+    thumb.className = 'inkahsubs-toggle-thumb';
+    toggle.append(input, track, thumb);
+    row.appendChild(toggle);
+
+    return row;
+  }
+
+  /**
+   * Set up MutationObserver on the player element to re-mount settings
+   * when Netflix/YouTube destroys and recreates the controls DOM.
+   * This is the exact pattern from the old extension.
+   */
+  private setupPlayerObserver() {
+    if (this.playerObserver) return;
+
+    let playerEl: Element | null = null;
+    if (isNetflix()) {
+      playerEl = document.querySelector('[data-uia="player"]');
+      // Fallback: observe the watch-video container
+      if (!playerEl) playerEl = document.querySelector('.watch-video');
+    } else if (isYouTube()) {
+      playerEl = document.querySelector('.html5-video-container');
+      if (!playerEl) playerEl = document.getElementById('movie_player');
+    }
+
+    if (!playerEl) {
+      // Player not in DOM yet — observe body for it
+      const bodyObserver = new MutationObserver(() => {
+        const el = isNetflix()
+          ? document.querySelector('.watch-video')
+          : document.getElementById('movie_player');
+        if (el) {
+          bodyObserver.disconnect();
+          this.setupPlayerObserver();
+        }
+      });
+      bodyObserver.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => bodyObserver.disconnect(), 60000);
+      return;
+    }
+
+    this.playerObserver = new MutationObserver(() => {
+      // Netflix/YouTube changed player attributes — re-mount settings
+      this.mountSettings();
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    // Stop observing after 60s to avoid leaks
-    setTimeout(() => observer.disconnect(), 60000);
+    this.playerObserver.observe(playerEl, { attributes: true, subtree: true, childList: true });
   }
 
   // === Progress Bar ===

@@ -104,7 +104,7 @@ export const VIDEO_OVERLAY_CSS = `
   margin-top: 2px;
 }
 
-/* === Settings icon === */
+/* === Settings icon (matches old extension exactly) === */
 .inkahsubs-settings {
   position: relative;
   display: inline-flex;
@@ -112,46 +112,56 @@ export const VIDEO_OVERLAY_CSS = `
   z-index: 100;
 }
 
-.inkahsubs-settings-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  display: flex;
+.inkahsubs-settings-container-logo {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
   width: 3rem;
   height: 3rem;
 }
 
-.inkahsubs-settings-icon {
-  width: 24px;
-  height: 24px;
-  opacity: 0.85;
-  transition: opacity 0.2s;
-  filter: brightness(10); /* Make white to match Netflix's icon style */
+.inkahsubs-settings-container-logo:hover {
+  opacity: 1;
 }
 
-.inkahsubs-settings-btn:hover .inkahsubs-settings-icon {
-  opacity: 1;
+.inkahsubs-settings-container-logo svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* Netflix: larger icon to match their button sizing */
+#netflix .inkahsubs-settings-container-logo {
+  width: 3rem;
+  height: 3rem;
+}
+
+#netflix .inkahsubs-settings-container-logo svg {
+  width: 28px;
+  height: 28px;
 }
 
 .inkahsubs-settings-wrapper {
   display: none;
   position: absolute;
-  bottom: 55px;
-  right: -10px;
+  bottom: 57px;
+  right: 0;
   background: #262a32;
   border-radius: 8px;
   padding: 16px;
   min-width: 260px;
+  width: max-content;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   color: #fff;
   font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.1s;
 }
 
-.inkahsubs-settings:hover .inkahsubs-settings-wrapper {
-  display: block;
+.inkahsubs-settings-wrapper[style*="display: block"] {
+  opacity: 1;
 }
 
 .inkahsubs-settings-row {
