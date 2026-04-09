@@ -1,134 +1,84 @@
 import { parseVtt } from './vtt-parser';
 import type { SubtitleCue, VideoService } from './types';
 
-const SUB_TYPES = { closedcaptions: '[cc]' };
+const WEBVTT = 'webvtt-lssdh-ios8';
+const SUB_TYPES: Record<string, string> = {
+  closedcaptions: '[cc]',
+  subtitles: '',
+};
 
 /**
- * Netflix subtitle service.
- * Injects a script into the page context that hooks JSON.parse/stringify
- * to intercept subtitle track data from Netflix's API.
+ * Netflix subtitle service — ported from old extension's netflix.ts.
+ * Listens for inkahsubs_data events from the MAIN world script,
+ * processes subtitle track data, and fetches WebVTT.
  */
 export class NetflixService implements VideoService {
-  private subCache: Record<string, Record<string, string>> = {};
-  private currentVideoId: string | null = null;
+  subCache: Record<string, Record<string, any>> = {};
+  currentVideoId: string = '';
 
-  init() {
-    // Listen for subtitle data events from the MAIN world content script
-    window.addEventListener('inkahsubs_data', ((e: CustomEvent) => {
-      const data = e.detail;
-      console.log('[inkah] inkahsubs_data received:', data ? 'has data' : 'null');
-
-      if (!data?.timedtexttracks) {
-        console.log('[inkah] No timedtexttracks in data. Keys:', data ? Object.keys(data) : 'null');
-        return;
-      }
-
-      console.log('[inkah] Found', data.timedtexttracks.length, 'tracks');
-
-      const videoId = data.movieId?.toString() ?? 'unknown';
-      const subs: Record<string, string> = {};
-
-      for (const track of data.timedtexttracks) {
-        if (!track.language) continue;
-        // Extract the WebVTT download URL — try multiple format keys
-        const downloadable = track.ttDownloadable;
-        if (!downloadable) {
-          // Log first track's keys to understand structure
-          if (Object.keys(subs).length === 0) {
-            console.log('[inkah] Track keys:', Object.keys(track));
-            console.log('[inkah] Track language:', track.language, 'type:', track.rawTrackType);
-          }
-          continue;
-        }
-
-        // Try known format keys in order of preference
-        const formatKeys = ['webvtt-lssdh-ios8', 'simplesdh', 'nflx-cmisc', 'dfxp-ls-sdh'];
-        let url: string | null = null;
-
-        for (const fk of formatKeys) {
-          if (downloadable[fk]?.downloadUrls) {
-            url = Object.values(downloadable[fk].downloadUrls)[0] as string;
-            if (url) break;
-          }
-          // Also check urls (plural) directly
-          if (downloadable[fk]?.urls) {
-            const urlObj = Object.values(downloadable[fk].urls)[0] as any;
-            url = typeof urlObj === 'string' ? urlObj : urlObj?.url;
-            if (url) break;
-          }
-        }
-
-        // Fallback: try any key in downloadable that has URLs
-        if (!url) {
-          for (const [key, value] of Object.entries(downloadable)) {
-            const v = value as any;
-            if (v?.downloadUrls) {
-              url = Object.values(v.downloadUrls)[0] as string;
-              if (url) {
-                console.log('[inkah] Found URL under format key:', key);
-                break;
-              }
-            }
-          }
-        }
-
-        if (url) {
-          const lang = track.language + (track.isForcedNarrative ? '-forced' : '');
-          subs[lang] = url;
-          if (track.rawTrackType === 'closedcaptions') {
-            subs[track.language + SUB_TYPES.closedcaptions] = url;
-          }
-        } else if (Object.keys(subs).length === 0) {
-          // Log format keys to understand what Netflix sends now
-          console.log('[inkah] downloadable keys for', track.language, ':', Object.keys(downloadable));
-        }
-      }
-
-      if (Object.keys(subs).length > 0) {
-        this.subCache[videoId] = subs;
-        this.currentVideoId = videoId;
-        console.log('[inkah] Netflix subtitle tracks cached:', Object.keys(subs).join(', '));
-      }
-    }) as EventListener);
-
-    // Note: API interception is done by the MAIN world content script
-    // (video-injector.content.ts), not by inline script injection,
-    // to comply with CSP restrictions on Netflix/YouTube.
+  constructor() {
+    this.processSubData = this.processSubData.bind(this);
+    window.addEventListener('inkahsubs_data', this.processSubData as EventListener);
   }
 
+  init() {
+    // API interception is done by the MAIN world content script
+    // (video-injector.content.ts). We just listen for events here.
+  }
+
+  // Ported verbatim from old extension's getSubs()
   async getSubs(language: string): Promise<SubtitleCue[]> {
-    if (!language) return [];
+    if (language === '') return [];
 
     const ccLanguage = language + SUB_TYPES.closedcaptions;
-
-    // Try by video ID, fallback to most recent cache
-    let subsList = this.currentVideoId
-      ? this.subCache[this.currentVideoId]
-      : undefined;
+    let videoId: string | null = this.getMovieId();
+    let subsList = this.subCache[videoId];
 
     if (!subsList) {
-      // Use most recent cached entry
+      // For TV shows/episodes, video ID doesn't match URL
+      videoId = this.getBetterMovieId();
+      if (videoId) {
+        subsList = this.subCache[videoId];
+      }
+    }
+
+    if (videoId) this.currentVideoId = videoId;
+
+    if (!subsList) {
+      // Final fallback: most recently added subtitle list
       const keys = Object.keys(this.subCache);
       if (keys.length > 0) {
         subsList = this.subCache[keys[keys.length - 1]];
       }
     }
 
-    if (!subsList) return [];
+    if (!subsList) {
+      console.log('[inkah] No subtitle cache found for any video ID');
+      return [];
+    }
 
     const langKey = Object.keys(subsList).find(
       (key) => key === language || key === ccLanguage,
     );
-    if (!langKey) return [];
 
-    const subUri = subsList[langKey];
-    if (!subUri) return [];
+    if (!langKey) {
+      console.log('[inkah] Language', language, 'not found in cache. Available:', Object.keys(subsList).join(', '));
+      return [];
+    }
+
+    // New format: {cdn_id, url} object. Old format: string URL directly.
+    const subUri = subsList[langKey]?.url || subsList[langKey];
+
+    if (!subUri) {
+      return [];
+    }
 
     try {
       const resp = await fetch(subUri);
       const data = await resp.text();
       return parseVtt(data);
-    } catch {
+    } catch (err) {
+      console.warn('[inkah] Failed to fetch subtitle VTT:', err);
       return [];
     }
   }
@@ -138,7 +88,6 @@ export class NetflixService implements VideoService {
     if (videos.length === 0) return null;
     if (videos.length === 1) return videos[0];
 
-    // Try to match by Netflix's data-videoid
     const player = document.querySelector('[data-uia="player"]');
     if (player) {
       const videoId = player.getAttribute('data-videoid');
@@ -150,5 +99,75 @@ export class NetflixService implements VideoService {
     }
 
     return videos[videos.length - 1];
+  }
+
+  // Ported verbatim from old extension's processSubData()
+  private processSubData(event: any) {
+    const detail = event.detail;
+    if (!detail) return;
+
+    // Only process EPISODE and MOVIE types
+    if (!['EPISODE', 'MOVIE'].includes(detail.viewableType)) {
+      return;
+    }
+
+    console.log('[inkah] processSubData: movieId=', detail.movieId, 'type=', detail.viewableType);
+
+    this.subCache[detail.movieId] = {};
+    const tracks = detail.timedtexttracks;
+
+    if (!tracks) return;
+
+    for (const track of tracks) {
+      if (track.isNoneTrack) {
+        continue;
+      }
+
+      let type = SUB_TYPES[track.rawTrackType];
+      if (typeof type === 'undefined') type = `[${track.rawTrackType}]`;
+
+      // isForcedNarrative = incomplete preview subtitles (only 15-20 lines)
+      const lang =
+        track.language + type + (track.isForcedNarrative ? '-forced' : '');
+
+      // ttDownloadables (with 's') is the Netflix field name
+      if (!track.ttDownloadables || !track.ttDownloadables[WEBVTT]) {
+        continue;
+      }
+
+      // Support both old format (downloadUrls) and new format (urls)
+      const urls =
+        track.ttDownloadables[WEBVTT].urls ||
+        track.ttDownloadables[WEBVTT].downloadUrls;
+
+      if (!urls) {
+        continue;
+      }
+
+      // Pick a random CDN URL from the available options
+      this.subCache[detail.movieId][lang] = this.randomProperty(urls);
+    }
+
+    const cached = Object.keys(this.subCache[detail.movieId]);
+    console.log('[inkah] Cached', cached.length, 'subtitle tracks:', cached.join(', '));
+  }
+
+  private randomProperty(obj: any): any {
+    const keys = Object.keys(obj);
+    return obj[keys[(keys.length * Math.random()) << 0]];
+  }
+
+  private getMovieId(): string {
+    try {
+      const match = window.location.pathname.match(/\/watch\/(.*)/);
+      return match ? match[1] : '';
+    } catch {
+      return '';
+    }
+  }
+
+  private getBetterMovieId(): string | null {
+    const player = document.querySelector('[data-uia="player"]');
+    return player?.getAttribute('data-videoid') ?? null;
   }
 }
