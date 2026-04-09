@@ -470,6 +470,14 @@ export class VideoController {
     // Show progress bar
     content.appendChild(this.makeSettingsToggle('Show progress bar', true, (_v) => {}));
 
+    // Right panel
+    content.appendChild(
+      this.makeSettingsToggle('Show right panel', this.showRightPanel, (v) => {
+        this.showRightPanel = v;
+        this.renderRightPanel();
+      }),
+    );
+
     // Section: Subtitles header
     const subsHeader = document.createElement('div');
     subsHeader.className = 'inkahsubs-settings__content__header';

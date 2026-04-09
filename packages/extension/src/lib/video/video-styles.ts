@@ -135,14 +135,14 @@ export const VIDEO_OVERLAY_CSS = `
 }
 
 .inkahsubs-settings-container-logo img {
-  width: 28px;
-  height: 28px;
-  opacity: 0.85;
-  transition: opacity 0.15s;
+  width: 32px;
+  height: 32px;
+  opacity: 1;
+  transition: transform 0.15s;
 }
 
 .inkahsubs-settings-container-logo:hover img {
-  opacity: 1;
+  transform: scale(1.1);
 }
 
 /* Netflix sizing */
@@ -168,6 +168,7 @@ export const VIDEO_OVERLAY_CSS = `
 .inkahsubs-settings-wrapper {
   position: absolute;
   bottom: 57px;
+  min-width: 320px;
   width: max-content;
   right: 0;
   background: #262a32;
@@ -223,9 +224,17 @@ export const VIDEO_OVERLAY_CSS = `
 
 .inkahsubs-settings__item {
   display: flex;
+  flex-direction: row;
   margin-top: 15px;
+  width: 100%;
 }
 .inkahsubs-settings__item:first-child { margin-top: 0; }
+
+/* Force content area to be vertical column layout */
+.inkahsubs-settings__content {
+  display: flex;
+  flex-direction: column;
+}
 
 .inkahsubs-settings__item__left-side {
   flex: 2;
