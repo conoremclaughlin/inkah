@@ -9,7 +9,7 @@ import { isKoreanLetter } from '../lib/parse-korean';
 import type { Settings } from '../data/settings';
 import { NetflixService } from '../lib/video/netflix-service';
 import { YouTubeService } from '../lib/video/youtube-service';
-import { SubtitleRenderer } from '../lib/video/subtitle-renderer';
+import { VideoController } from '../lib/video/video-controller';
 
 const TONE_KEYS = [
   'firstTone',
@@ -33,11 +33,17 @@ export default defineContentScript({
 
   async main() {
     // Keepalive port — keeps the service worker alive while this tab exists.
+    // Reconnects aggressively on disconnect (SPA navigations on Netflix/YouTube
+    // can cause the port to close).
     function connectKeepalive() {
-      const port = chrome.runtime.connect({ name: 'keepalive' });
-      port.onDisconnect.addListener(() => {
-        setTimeout(connectKeepalive, 1000);
-      });
+      try {
+        const port = chrome.runtime.connect({ name: 'keepalive' });
+        port.onDisconnect.addListener(() => {
+          setTimeout(connectKeepalive, 500);
+        });
+      } catch {
+        // Extension context invalidated — stop trying
+      }
     }
     connectKeepalive();
 
@@ -456,37 +462,33 @@ export default defineContentScript({
       settings = { ...settings, isDarkModeOn: true };
     }
 
-    // --- Video subtitle integration ---
+    // --- Video subtitle integration (Netflix / YouTube) ---
     if (isNetflix || isYouTube) {
       const videoService = isNetflix
         ? new NetflixService()
         : new YouTubeService();
 
-      const subtitleRenderer = new SubtitleRenderer(videoService, settings, {
-        onWordHover: async (text: string, rect: DOMRect) => {
-          try {
-            const definitions = await sendToBackground<
-              WordDefinitions[] | null
-            >('search/text', { text });
-
-            if (definitions && definitions.length > 0) {
-              removePopup();
-              lastPopup = createPopupElement(definitions, rect);
-              document.body.appendChild(lastPopup);
-            }
-          } catch {}
+      const videoController = new VideoController(videoService, settings, {
+        lookup: async (text: string) => {
+          return sendToBackground<WordDefinitions[] | null>(
+            'search/text',
+            { text },
+          );
         },
-        onWordLeave: () => {
-          // Don't remove immediately — let the user move to the popup
+        showPopup: (definitions: WordDefinitions[], rect: DOMRect) => {
+          removePopup();
+          lastPopup = createPopupElement(definitions, rect);
+          document.body.appendChild(lastPopup);
         },
+        removePopup,
       });
 
       videoService.init();
-      subtitleRenderer.start();
+      videoController.start();
 
-      // Update renderer when settings change
+      // Update controller when settings change
       chrome.storage.onChanged.addListener(() => {
-        subtitleRenderer.updateSettings(settings);
+        videoController.updateSettings(settings);
       });
     }
 
