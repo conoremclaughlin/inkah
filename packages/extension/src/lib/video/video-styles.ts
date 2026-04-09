@@ -104,64 +104,266 @@ export const VIDEO_OVERLAY_CSS = `
   margin-top: 2px;
 }
 
-/* === Settings icon (matches old extension exactly) === */
+/* === Settings (ported from old extension's settings.scss) === */
 .inkahsubs-settings {
-  position: relative;
-  display: inline-flex;
+  line-height: 1.5;
+  color: #fff;
+  z-index: 1000;
+  width: 44px;
+  height: 44px;
+  display: inline-block;
+  justify-content: center;
   align-items: center;
-  z-index: 100;
+  cursor: pointer;
+}
+
+.inkahsubs-settings label { color: #fff; }
+
+.inkahsubs-settings-container {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 }
 
 .inkahsubs-settings-container-logo {
-  display: inline-flex;
+  height: 100%;
+  display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  opacity: 0.8;
-  transition: opacity 0.2s;
-  width: 3rem;
-  height: 3rem;
 }
 
-.inkahsubs-settings-container-logo:hover {
-  opacity: 1;
-}
-
-.inkahsubs-settings-container-logo svg {
-  width: 24px;
-  height: 24px;
-}
-
-/* Netflix: larger icon to match their button sizing */
-#netflix .inkahsubs-settings-container-logo {
-  width: 3rem;
-  height: 3rem;
-}
-
-#netflix .inkahsubs-settings-container-logo svg {
+.inkahsubs-settings-container-logo img {
   width: 28px;
   height: 28px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
 }
 
+.inkahsubs-settings-container-logo:hover img {
+  opacity: 1;
+}
+
+/* Netflix sizing */
+#netflix .inkahsubs-settings {
+  height: 5.2rem;
+  width: 5.2rem;
+  font-size: 2.5rem;
+  margin-left: -0.3rem;
+  margin-right: 2.7rem;
+  line-height: inherit;
+}
+
+#netflix .inkahsubs-settings-container-logo img {
+  width: 1.6em;
+  height: 1.6em;
+}
+
+/* YouTube sizing */
+#youtube .inkahsubs-settings { width: 36px; height: 36px; }
+#youtube .ytp-fullscreen .inkahsubs-settings { width: 54px; height: 54px; }
+
+/* Settings dropdown wrapper */
 .inkahsubs-settings-wrapper {
-  display: none;
   position: absolute;
   bottom: 57px;
+  width: max-content;
   right: 0;
   background: #262a32;
-  border-radius: 8px;
-  padding: 16px;
-  min-width: 260px;
-  width: max-content;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-  color: #fff;
-  font-size: 13px;
-  opacity: 0;
-  transition: opacity 0.1s;
+  border-radius: 5px;
+  overflow: hidden;
+  z-index: 100;
+  font-size: 14px;
+  transition: opacity 0.15s ease-in;
 }
 
-.inkahsubs-settings-wrapper[style*="display: block"] {
-  opacity: 1;
+.inkahsubs-settings-close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 18px;
+  height: 18px;
+  opacity: 0.3;
+  cursor: pointer;
+}
+.inkahsubs-settings-close:hover { opacity: 1; }
+.inkahsubs-settings-close:before,
+.inkahsubs-settings-close:after {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  content: ' ';
+  height: 18px;
+  width: 2px;
+  background-color: #fff;
+}
+.inkahsubs-settings-close:before { transform: rotate(45deg); }
+.inkahsubs-settings-close:after { transform: rotate(-45deg); }
+
+.inkahsubs-settings-header {
+  padding: 12px 15px;
+  background: #21252b;
+  font-size: 14px;
+}
+
+.inkahsubs-settings__content {
+  padding: 15px;
+}
+
+.inkahsubs-settings__content__header {
+  line-height: 20px;
+  margin-top: 20px;
+  font-size: 12px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #6b6b6b;
+  color: #6b6b6b;
+}
+.inkahsubs-settings__content__header:first-child { margin-top: 0; }
+
+.inkahsubs-settings__item {
+  display: flex;
+  margin-top: 15px;
+}
+.inkahsubs-settings__item:first-child { margin-top: 0; }
+
+.inkahsubs-settings__item__left-side {
+  flex: 2;
+  text-align: right;
+  margin-right: 10px;
+  align-self: center;
+}
+
+.inkahsubs-settings__item__right-side {
+  flex: 1 0;
+  text-align: left;
+  align-self: center;
+}
+
+/* Font size +/- buttons */
+.inkahsubs-settings__font-size {
+  display: flex;
+  align-items: center;
+}
+.inkahsubs-settings__font-size > div { margin-right: 10px; }
+.inkahsubs-settings__font-size__text {
+  font-weight: 600;
+  min-width: 45px;
+  text-align: center;
+}
+
+.inkahsubs-settings__button {
+  position: relative;
+  background: rgba(255,255,255,0.2);
+  border-radius: 5px;
+  padding: 0 8px;
+  line-height: 20px;
+  display: inline-block;
+  cursor: pointer;
+}
+.inkahsubs-settings__button.-transparent { background: none; }
+.inkahsubs-settings__button.-plus,
+.inkahsubs-settings__button.-minus {
+  background: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+.inkahsubs-settings__button.-plus:before,
+.inkahsubs-settings__button.-plus:after,
+.inkahsubs-settings__button.-minus:before,
+.inkahsubs-settings__button.-minus:after {
+  position: absolute;
+  display: block;
+  height: 2px;
+  width: 10px;
+  background: #fff;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-50%);
+  border-radius: 4px;
+  content: '';
+}
+.inkahsubs-settings__button.-plus:after {
+  transform: translateX(-50%) translateY(-50%) rotate(90deg);
+}
+
+/* Select dropdown */
+.inkahsubs-settings__select {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  font-size: 14px;
+  color: #fff;
+  height: auto;
+  width: 100%;
+  -webkit-appearance: none;
+  border-radius: 5px;
+  padding: 0 8px;
+  line-height: 20px;
+  background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+Cjxwb2x5Z29uIHN0eWxlPSJmaWxsOiAjZmZmZmZmOyIgb3BhY2l0eT0iMC43IiBwb2ludHM9IjAsNCAxNiw0IDgsMTIiLz4KPC9zdmc+Cg==');
+  background-repeat: no-repeat;
+  background-position: calc(100% - 8px) 50%;
+  background-size: 12px;
+}
+.inkahsubs-settings__select option { color: initial; }
+
+/* === Toggle switch (ported verbatim from old toggle.scss) === */
+.inkahsubs-label {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.inkahsubs-label .toggle {
+  isolation: isolate;
+  position: relative;
+  height: 20px;
+  width: 40px;
+  border-radius: 15px;
+  background: #d6d6d6;
+  overflow: hidden;
+}
+
+.inkahsubs-label .toggle-inner {
+  z-index: 2;
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  height: 18px;
+  width: 38px;
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+.inkahsubs-label .active-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 200%;
+  background: #1296ba;
+  transform: translate3d(-100%, 0, 0);
+  transition: transform 0.05s linear 0.17s;
+}
+
+.inkahsubs-label .toggle-state { display: none; }
+
+.inkahsubs-label .indicator {
+  height: 100%;
+  width: 200%;
+  background: white;
+  border-radius: 13px;
+  transform: translate3d(-75%, 0, 0);
+  transition: transform 0.35s cubic-bezier(0.85, 0.05, 0.18, 1.35);
+}
+
+.inkahsubs-label .toggle-state:checked ~ .active-bg {
+  transform: translate3d(-50%, 0, 0);
+}
+
+.inkahsubs-label .toggle-state:checked ~ .toggle-inner .indicator {
+  transform: translate3d(25%, 0, 0);
 }
 
 .inkahsubs-settings-row {

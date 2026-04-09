@@ -9,7 +9,7 @@ import {
   isNetflix,
   isYouTube,
 } from './subtitle-utilities';
-import { INKAH_LOGO_SVG } from './inkah-logo-svg';
+// Purple Inkah logo loaded from extension assets
 
 type LookupFn = (text: string) => Promise<WordDefinitions[] | null>;
 type PopupFn = (definitions: WordDefinitions[], rect: DOMRect) => void;
@@ -46,6 +46,7 @@ export class VideoController {
   // State
   private showRightPanel = false;
   private showBackground = true;
+  private subFontSize = 100;
   private currentSubIndex = -1;
 
   constructor(
@@ -365,35 +366,48 @@ export class VideoController {
   }
 
   private buildSettingsContent(container: HTMLElement) {
-    // Logo container with hover behavior (750ms delay like old code)
+    // Outer container matching old extension structure
+    const settingsContainer = document.createElement('div');
+    settingsContainer.className = 'inkahsubs-settings-container';
+
+    // Logo — purple Inkah icon
     const logoContainer = document.createElement('div');
     logoContainer.className = 'inkahsubs-settings-container-logo';
-    logoContainer.innerHTML = INKAH_LOGO_SVG;
+    const logoImg = document.createElement('img');
+    logoImg.src = chrome.runtime.getURL('/images/inkah-logo-48.png');
+    logoImg.alt = 'Inkah';
+    logoImg.draggable = false;
+    logoContainer.appendChild(logoImg);
 
-    // Settings dropdown
+    // Settings dropdown — uses exact old class names
     const dropdown = document.createElement('div');
     dropdown.className = 'inkahsubs-settings-wrapper';
+    dropdown.style.display = 'none';
+    dropdown.style.opacity = '0';
 
-    // Hover behavior: 750ms delay on leave, instant on enter
+    // --- Show/hide with 750ms delay (old code's exact behavior) ---
     const showDropdown = () => {
       if (this.settingsTransitionTimer) {
         clearTimeout(this.settingsTransitionTimer);
         this.settingsTransitionTimer = null;
       }
       dropdown.style.display = 'block';
+      // Trigger opacity transition on next frame
+      requestAnimationFrame(() => { dropdown.style.opacity = '1'; });
     };
 
     const hideDropdown = () => {
       this.settingsTransitionTimer = setTimeout(() => {
-        dropdown.style.display = 'none';
+        dropdown.style.opacity = '0';
+        setTimeout(() => { dropdown.style.display = 'none'; }, 150);
       }, 750);
     };
 
     logoContainer.addEventListener('mouseenter', showDropdown);
     logoContainer.addEventListener('mouseleave', hideDropdown);
     logoContainer.addEventListener('click', () => {
-      dropdown.style.display =
-        dropdown.style.display === 'block' ? 'none' : 'block';
+      if (dropdown.style.display === 'none') showDropdown();
+      else { dropdown.style.opacity = '0'; setTimeout(() => dropdown.style.display = 'none', 150); }
     });
 
     dropdown.addEventListener('mouseenter', () => {
@@ -402,55 +416,140 @@ export class VideoController {
         this.settingsTransitionTimer = null;
       }
     });
-    dropdown.addEventListener('mouseleave', hideDropdown);
+    dropdown.addEventListener('mouseleave', (e) => {
+      // Old code: ignore mouseleave from select elements (Firefox fix)
+      const target = e.target as HTMLElement;
+      if (target?.tagName?.toLowerCase() === 'select') return;
+      hideDropdown();
+    });
 
-    // Build settings controls
-    dropdown.appendChild(
-      this.makeToggleRow('Right Panel', this.showRightPanel, (v) => {
-        this.showRightPanel = v;
-        this.renderRightPanel();
-      }),
-    );
+    // Close button (X with CSS pseudo-elements)
+    const closeBtn = document.createElement('div');
+    closeBtn.className = 'inkahsubs-settings-close';
+    closeBtn.addEventListener('click', () => {
+      dropdown.style.opacity = '0';
+      setTimeout(() => dropdown.style.display = 'none', 150);
+    });
+    dropdown.appendChild(closeBtn);
 
-    dropdown.appendChild(
-      this.makeToggleRow('Background', this.showBackground, (v) => {
+    // Header
+    const header = document.createElement('div');
+    header.className = 'inkahsubs-settings-header';
+    header.textContent = isNetflix() ? 'Inkah Netflix settings' : 'Inkah YouTube BETA settings';
+    dropdown.appendChild(header);
+
+    // Content area
+    const content = document.createElement('div');
+    content.className = 'inkahsubs-settings__content';
+
+    // Hint
+    const hint = document.createElement('div');
+    hint.className = 'inkahsubs-settings__item';
+    hint.style.maxWidth = '280px';
+    hint.innerHTML = `<div>Hover and press 's' or 'b' to save a word</div>`;
+    content.appendChild(hint);
+
+    // Section: Settings header
+    const settingsHeader = document.createElement('div');
+    settingsHeader.className = 'inkahsubs-settings__content__header';
+    settingsHeader.textContent = isNetflix() ? 'Inkah Netflix settings' : 'Inkah YouTube BETA settings';
+    content.appendChild(settingsHeader);
+
+    // Enable toggle
+    content.appendChild(this.makeSettingsToggle('Enable', true, (_v) => {}));
+
+    // Show native double subtitles
+    content.appendChild(this.makeSettingsToggle('Show native double subtitles', false, (_v) => {}));
+
+    // Show transliteration
+    content.appendChild(this.makeSettingsToggle('Show transliteration', false, (_v) => {}));
+
+    // Auto-pause
+    content.appendChild(this.makeSettingsToggle('Auto pause when hovering subtitles', false, (_v) => {}));
+
+    // Show progress bar
+    content.appendChild(this.makeSettingsToggle('Show progress bar', true, (_v) => {}));
+
+    // Section: Subtitles header
+    const subsHeader = document.createElement('div');
+    subsHeader.className = 'inkahsubs-settings__content__header';
+    subsHeader.textContent = 'Subtitles';
+    content.appendChild(subsHeader);
+
+    // Subtitle background
+    content.appendChild(
+      this.makeSettingsToggle('Subtitles background', this.showBackground, (v) => {
         this.showBackground = v;
-        this.currentText = ''; // force re-render
+        this.currentText = '';
       }),
     );
 
-    container.appendChild(logoContainer);
-    container.appendChild(dropdown);
+    // Font size
+    const fontRow = document.createElement('div');
+    fontRow.className = 'inkahsubs-settings__learning-service inkahsubs-settings__item';
+    fontRow.innerHTML = `
+      <div class="inkahsubs-settings__item__left-side"><span>Subtitles size</span></div>
+      <div class="inkahsubs-settings__item__right-side">
+        <div class="inkahsubs-settings__font-size">
+          <div class="inkahsubs-settings__button -transparent -minus" id="inkah-font-minus"></div>
+          <div class="inkahsubs-settings__font-size__text" id="inkah-font-value">${this.subFontSize}%</div>
+          <div class="inkahsubs-settings__button -transparent -plus" id="inkah-font-plus"></div>
+        </div>
+      </div>`;
+    content.appendChild(fontRow);
+
+    // Wire up font buttons after DOM insertion
+    setTimeout(() => {
+      document.getElementById('inkah-font-minus')?.addEventListener('click', () => {
+        this.subFontSize = Math.max(60, this.subFontSize - 5);
+        const el = document.getElementById('inkah-font-value');
+        if (el) el.textContent = `${this.subFontSize}%`;
+        this.currentText = '';
+      });
+      document.getElementById('inkah-font-plus')?.addEventListener('click', () => {
+        this.subFontSize = Math.min(200, this.subFontSize + 5);
+        const el = document.getElementById('inkah-font-value');
+        if (el) el.textContent = `${this.subFontSize}%`;
+        this.currentText = '';
+      });
+    }, 0);
+
+    dropdown.appendChild(content);
+    settingsContainer.appendChild(logoContainer);
+    settingsContainer.appendChild(dropdown);
+    container.appendChild(settingsContainer);
   }
 
-  private makeToggleRow(
+  /** Create a settings toggle row matching old extension's DOM structure */
+  private makeSettingsToggle(
     label: string,
     checked: boolean,
     onChange: (v: boolean) => void,
   ): HTMLElement {
-    const row = document.createElement('div');
-    row.className = 'inkahsubs-settings-row';
+    const item = document.createElement('label');
+    item.className = 'inkahsubs-label inkahsubs-settings__item';
+    item.innerHTML = `
+      <div class="inkahsubs-settings__item__left-side">
+        <div class="inkahsubs-label-text">${label}</div>
+      </div>
+      <div class="inkahsubs-settings__item__right-side">
+        <div class="toggle">
+          <input class="toggle-state setting-toggle" type="checkbox" name="check" ${checked ? 'checked' : ''}>
+          <div class="toggle-inner"><div class="indicator"></div></div>
+          <div class="active-bg"></div>
+        </div>
+      </div>`;
 
-    const lbl = document.createElement('span');
-    lbl.className = 'inkahsubs-settings-label';
-    lbl.textContent = label;
-    row.appendChild(lbl);
+    const input = item.querySelector('input') as HTMLInputElement;
+    const toggleDiv = item.querySelector('.toggle') as HTMLElement;
+    toggleDiv?.addEventListener('click', () => {
+      input.checked = !input.checked;
+      onChange(input.checked);
+    });
 
-    const toggle = document.createElement('label');
-    toggle.className = 'inkahsubs-toggle';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = checked;
-    input.addEventListener('change', () => onChange(input.checked));
-    const track = document.createElement('span');
-    track.className = 'inkahsubs-toggle-track';
-    const thumb = document.createElement('span');
-    thumb.className = 'inkahsubs-toggle-thumb';
-    toggle.append(input, track, thumb);
-    row.appendChild(toggle);
-
-    return row;
+    return item;
   }
+
 
   /**
    * Set up MutationObserver on the player element to re-mount settings
