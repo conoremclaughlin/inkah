@@ -277,6 +277,16 @@ export class VideoController {
     if (!this.rightPanel) return;
     this.rightPanel.innerHTML = '';
 
+    // Add/remove hasRightPanel class on player container to shift video over
+    const playerContainer = this.findPlayerContainer();
+    if (playerContainer) {
+      if (this.showRightPanel && this.cues.length > 0) {
+        playerContainer.classList.add('watch-video__hasRightPanel');
+      } else {
+        playerContainer.classList.remove('watch-video__hasRightPanel');
+      }
+    }
+
     if (!this.showRightPanel || this.cues.length === 0) {
       this.rightPanel.classList.remove('inkahsubs-show');
       return;
@@ -299,7 +309,10 @@ export class VideoController {
       row.addEventListener('click', () => {
         const video = this.service.findVideo();
         if (video) {
-          video.currentTime = cue.start;
+          // Use Netflix/YouTube player API via MAIN world — direct video.currentTime crashes Netflix
+          window.dispatchEvent(
+            new CustomEvent('inkahsubsSeek', { detail: cue.start * 1000 }),
+          );
         }
       });
 
@@ -646,7 +659,10 @@ export class VideoController {
 
       el.addEventListener('click', () => {
         const video = this.service.findVideo();
-        if (video) video.currentTime = cue.start;
+        if (video) // Use Netflix/YouTube player API via MAIN world — direct video.currentTime crashes Netflix
+          window.dispatchEvent(
+            new CustomEvent('inkahsubsSeek', { detail: cue.start * 1000 }),
+          );
       });
 
       this.progressBar.appendChild(el);

@@ -1,0 +1,121 @@
+#youtube {
+  // c: positioning on Youtube is weird and our logo's alignment in
+  // non-fullscreen is off for some reason. Not sure why.
+  .ytp-right-controls {
+    display: flex;
+    align-items: center;
+  }
+
+  .inkahsubs-settings-container-logo {
+    margin-right: 10px;
+  }
+
+  .inkahsubs-settings__content {
+    padding: 10px 15px;
+  }
+
+  .inkahsubs-settings__content__header {
+    margin-top: 15px;
+  }
+
+  .inkahsubs-settings__item {
+    margin-top: 10px;
+  }
+
+  .inkahsubs-label-text {
+    line-height: normal;
+  }
+
+  .inkahsubs-settings-wrapper {
+    bottom: 50px;
+    margin-left: -60px;
+    right: auto;
+  }
+
+  .inkahsubs-settings {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+#youtube.inkahsubs-enable {
+  .captions-text {
+    display: none !important;
+  }
+
+  &.inkahsubs-progress-bar-enable {
+    .ytp-chrome-bottom,
+    .ytp-gradient-bottom {
+      bottom: 15px;
+    }
+    .html5-video-player {
+      padding-bottom: 15px;
+    }
+  }
+
+  .html5-video-player {
+    &.ytp-fullscreen {
+      padding-bottom: 0;
+
+      #inkahsubs {
+        bottom: 110px;
+      }
+    }
+  }
+
+  // .inkahsubs-settings-container {
+  //   display: grid;
+  //   margin-left: 5px;
+  //   margin-right: 5px;
+  // }
+  #inkahsubs {
+    z-index: 30;
+    bottom: 80px;
+  }
+
+  .in_rightPanel_nativeSub {
+    margin-top: -80px;
+  }
+
+  .in_rightPanel_scrollContainer {
+    border: 1px solid #eaeaea;
+  }
+
+  .in_themeDarkPleco {
+    .in_rightPanel_scrollContainer {
+      border-color: transparent;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    .in_rightPanel_scrollContainer {
+      height: 380px;
+    }
+  }
+
+  @media (min-width: 1100px)  {
+    .in_rightPanel_scrollContainer {
+      height: 525px;
+    }
+  }
+
+  .in_scrollMiddleButtonContainer {
+    // top: 85px;
+    // right: 65px;
+    position: absolute;
+  }
+
+  .in_scrollMiddleButton {
+    font-size: 24px;
+  }
+
+  .inkahsubs-right-half-subtitles {
+    position: relative;
+    width: 100%;
+    margin-bottom: 20px;
+  }
+
+  .Toastify__toast-body {
+    font-size: 16px;
+  }
+}

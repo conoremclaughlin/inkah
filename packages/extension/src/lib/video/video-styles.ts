@@ -476,8 +476,13 @@ html[id="netflix"] .inkahsubs-enable #inkahsubs {
   }
 }
 
-html[id="netflix"] .watch-video.watch-video__hasRightPanel .watch-video--player-view {
-  width: calc(100% - 425px);
+/* Netflix right panel: shift video left to make room */
+.watch-video.watch-video__hasRightPanel .watch-video--player-view {
+  width: calc(100% - 425px) !important;
+}
+
+.watch-video.watch-video__hasRightPanel #inRightPanel {
+  display: block !important;
 }
 
 /* === YouTube-specific === */
