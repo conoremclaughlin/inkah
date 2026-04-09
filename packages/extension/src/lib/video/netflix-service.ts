@@ -41,6 +41,7 @@ export class NetflixService implements VideoService {
       if (Object.keys(subs).length > 0) {
         this.subCache[videoId] = subs;
         this.currentVideoId = videoId;
+        console.log('[inkah] Netflix subtitle tracks cached:', Object.keys(subs).join(', '));
       }
     }) as EventListener);
 

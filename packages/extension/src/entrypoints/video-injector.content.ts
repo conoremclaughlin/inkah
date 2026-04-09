@@ -39,6 +39,7 @@ function initNetflixInterception() {
   JSON.parse = function () {
     const data = parseMock.apply(this, arguments as any);
     if (data?.result?.timedtexttracks) {
+      lastSubtitleData = data.result;
       window.dispatchEvent(
         new CustomEvent('inkahsubs_data', { detail: data.result }),
       );
@@ -109,14 +110,26 @@ function initNetflixInterception() {
     window.dispatchEvent(new Event('inkahLocationChange'));
   });
 
-  // When content script signals it's ready, re-fire subtitle data if we have it
+  // Store the last subtitle track data so content script can retrieve it
+  let lastSubtitleData: any = null;
+
+  // When content script signals it's ready, re-fire ALL subtitle data
   window.addEventListener('inkahContentReady', () => {
-    if (inkah.isLoaded && inkah.currentLanguage) {
+    // Re-fire the subtitle track data so content script can cache URLs
+    if (lastSubtitleData) {
       window.dispatchEvent(
-        new CustomEvent('inkahsubsSubtitlesChanged', {
-          detail: { language: inkah.currentLanguage },
-        }),
+        new CustomEvent('inkahsubs_data', { detail: lastSubtitleData }),
       );
+    }
+    // Re-fire subtitle language change
+    if (inkah.isLoaded && inkah.currentLanguage) {
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('inkahsubsSubtitlesChanged', {
+            detail: { language: inkah.currentLanguage },
+          }),
+        );
+      }, 100);
     }
   });
 

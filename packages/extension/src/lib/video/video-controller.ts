@@ -117,6 +117,8 @@ export class VideoController {
 
   private handleSubtitleChange = async (e: CustomEvent) => {
     const language = e.detail?.language ?? e.detail ?? '';
+    console.log('[inkah] Subtitle language changed:', language);
+
     if (!language) {
       this.cues = [];
       this.currentText = '';
@@ -126,10 +128,12 @@ export class VideoController {
 
     try {
       this.cues = await this.service.getSubs(language);
+      console.log('[inkah] Fetched', this.cues.length, 'subtitle cues');
 
       if (this.cues.length > 0) {
         this.mountAll();
         this.startTimeSync();
+        this.renderRightPanel();
       }
     } catch (err) {
       console.warn('[inkah] Failed to fetch subtitles:', err);
