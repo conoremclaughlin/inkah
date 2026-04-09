@@ -314,7 +314,12 @@ export class VideoController {
     } else if (isYouTube()) {
       parentNode = document.querySelector('.ytp-right-controls');
     }
-    if (!parentNode) return;
+
+    if (!parentNode) {
+      // Controls may not be visible yet — observe for them
+      this.observeForControls();
+      return;
+    }
 
     this.settingsEl = document.createElement('div');
     this.settingsEl.className = 'inkahsubs-settings';
@@ -381,6 +386,26 @@ export class VideoController {
     } else {
       parentNode.prepend(this.settingsEl);
     }
+  }
+
+  /** Observe DOM for Netflix/YouTube controls to appear, then mount settings icon */
+  private observeForControls() {
+    const selector = isNetflix()
+      ? '[data-uia="controls-standard"]'
+      : '.ytp-right-controls';
+
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector(selector);
+      if (el && !this.settingsEl) {
+        observer.disconnect();
+        this.mountSettings();
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Stop observing after 60s to avoid leaks
+    setTimeout(() => observer.disconnect(), 60000);
   }
 
   // === Progress Bar ===

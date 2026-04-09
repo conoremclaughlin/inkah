@@ -121,14 +121,13 @@ function initNetflixInterception() {
 
     const isReady = player.isReady?.();
     const isWatchUrl = window.location.href.includes('watch');
-    const hasPlayer =
-      document.querySelector('.watch-video') &&
-      document.querySelector('[data-uia="player"]');
+    const hasVideo = document.querySelector('video') !== null;
+    const hasContainer = document.querySelector('.watch-video') !== null;
 
     const videoEl = document.querySelector('video');
     const src = videoEl?.src ?? null;
 
-    if (isWatchUrl && (isReady || hasPlayer) && !inkah.isLoaded) {
+    if (isWatchUrl && (isReady || (hasVideo && hasContainer)) && !inkah.isLoaded) {
       inkah.isLoaded = true;
       inkah.hasLoadedOnce = true;
       inkah.videoSrc = src;
