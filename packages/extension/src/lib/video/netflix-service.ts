@@ -16,25 +16,71 @@ export class NetflixService implements VideoService {
     // Listen for subtitle data events from the MAIN world content script
     window.addEventListener('inkahsubs_data', ((e: CustomEvent) => {
       const data = e.detail;
-      if (!data?.timedtexttracks) return;
+      console.log('[inkah] inkahsubs_data received:', data ? 'has data' : 'null');
+
+      if (!data?.timedtexttracks) {
+        console.log('[inkah] No timedtexttracks in data. Keys:', data ? Object.keys(data) : 'null');
+        return;
+      }
+
+      console.log('[inkah] Found', data.timedtexttracks.length, 'tracks');
 
       const videoId = data.movieId?.toString() ?? 'unknown';
       const subs: Record<string, string> = {};
 
       for (const track of data.timedtexttracks) {
         if (!track.language) continue;
-        // Extract the WebVTT download URL
+        // Extract the WebVTT download URL — try multiple format keys
         const downloadable = track.ttDownloadable;
-        if (downloadable?.['webvtt-lssdh-ios8']?.downloadUrls) {
-          const urls = downloadable['webvtt-lssdh-ios8'].downloadUrls;
-          const url = Object.values(urls)[0] as string;
-          if (url) {
-            const lang = track.language + (track.isForcedNarrative ? '-forced' : '');
-            subs[lang] = url;
-            if (track.rawTrackType === 'closedcaptions') {
-              subs[track.language + SUB_TYPES.closedcaptions] = url;
+        if (!downloadable) {
+          // Log first track's keys to understand structure
+          if (Object.keys(subs).length === 0) {
+            console.log('[inkah] Track keys:', Object.keys(track));
+            console.log('[inkah] Track language:', track.language, 'type:', track.rawTrackType);
+          }
+          continue;
+        }
+
+        // Try known format keys in order of preference
+        const formatKeys = ['webvtt-lssdh-ios8', 'simplesdh', 'nflx-cmisc', 'dfxp-ls-sdh'];
+        let url: string | null = null;
+
+        for (const fk of formatKeys) {
+          if (downloadable[fk]?.downloadUrls) {
+            url = Object.values(downloadable[fk].downloadUrls)[0] as string;
+            if (url) break;
+          }
+          // Also check urls (plural) directly
+          if (downloadable[fk]?.urls) {
+            const urlObj = Object.values(downloadable[fk].urls)[0] as any;
+            url = typeof urlObj === 'string' ? urlObj : urlObj?.url;
+            if (url) break;
+          }
+        }
+
+        // Fallback: try any key in downloadable that has URLs
+        if (!url) {
+          for (const [key, value] of Object.entries(downloadable)) {
+            const v = value as any;
+            if (v?.downloadUrls) {
+              url = Object.values(v.downloadUrls)[0] as string;
+              if (url) {
+                console.log('[inkah] Found URL under format key:', key);
+                break;
+              }
             }
           }
+        }
+
+        if (url) {
+          const lang = track.language + (track.isForcedNarrative ? '-forced' : '');
+          subs[lang] = url;
+          if (track.rawTrackType === 'closedcaptions') {
+            subs[track.language + SUB_TYPES.closedcaptions] = url;
+          }
+        } else if (Object.keys(subs).length === 0) {
+          // Log format keys to understand what Netflix sends now
+          console.log('[inkah] downloadable keys for', track.language, ':', Object.keys(downloadable));
         }
       }
 
