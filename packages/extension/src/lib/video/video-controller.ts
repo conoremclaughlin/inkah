@@ -79,6 +79,14 @@ export class VideoController {
       'inkahsubsVideoReady',
       this.handleVideoReady as EventListener,
     );
+
+    // Mount settings icon immediately (don't wait for subtitles)
+    this.mountSettingsWhenReady();
+
+    // Signal to MAIN world that content script is ready —
+    // the MAIN world script may have already fired subtitle data
+    // before we were listening. Request a re-fire.
+    window.dispatchEvent(new CustomEvent('inkahContentReady'));
   }
 
   stop() {
@@ -128,6 +136,16 @@ export class VideoController {
 
   // === Mounting ===
 
+  /** Mount settings icon as soon as the controls bar is available */
+  private mountSettingsWhenReady() {
+    // Try immediately
+    this.mountSettings();
+    // Also observe for controls appearing later
+    if (!this.settingsEl) {
+      this.observeForControls();
+    }
+  }
+
   private mountAll() {
     const video = this.service.findVideo();
     if (!video) return;
@@ -143,7 +161,7 @@ export class VideoController {
 
     this.mountCenterSubs(playerContainer);
     this.mountRightPanel(playerContainer);
-    this.mountSettings();
+    this.mountSettings(); // no-op if already mounted
     this.mountProgressBar(playerContainer);
   }
 

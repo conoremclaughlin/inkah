@@ -109,6 +109,17 @@ function initNetflixInterception() {
     window.dispatchEvent(new Event('inkahLocationChange'));
   });
 
+  // When content script signals it's ready, re-fire subtitle data if we have it
+  window.addEventListener('inkahContentReady', () => {
+    if (inkah.isLoaded && inkah.currentLanguage) {
+      window.dispatchEvent(
+        new CustomEvent('inkahsubsSubtitlesChanged', {
+          detail: { language: inkah.currentLanguage },
+        }),
+      );
+    }
+  });
+
   // Poll for player readiness and subtitle changes
   window.setInterval(() => {
     const player = getPlayer();
