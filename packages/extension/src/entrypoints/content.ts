@@ -7,6 +7,9 @@ import {
 } from '../lib/parse-chinese';
 import { isKoreanLetter } from '../lib/parse-korean';
 import type { Settings } from '../data/settings';
+import { NetflixService } from '../lib/video/netflix-service';
+import { YouTubeService } from '../lib/video/youtube-service';
+import { SubtitleRenderer } from '../lib/video/subtitle-renderer';
 
 const TONE_KEYS = [
   'firstTone',
@@ -443,5 +446,153 @@ export default defineContentScript({
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeyDown);
+
+    // --- Netflix dark mode auto-detection ---
+    const isNetflix = window.location.hostname.includes('netflix.com');
+    const isYouTube = window.location.hostname.includes('youtube.com');
+
+    if (isNetflix && !(settings?.isDarkModeOn)) {
+      // Auto-enable dark mode on Netflix
+      settings = { ...settings, isDarkModeOn: true };
+    }
+
+    // --- Video subtitle integration ---
+    if (isNetflix || isYouTube) {
+      const videoService = isNetflix
+        ? new NetflixService()
+        : new YouTubeService();
+
+      const subtitleRenderer = new SubtitleRenderer(videoService, settings, {
+        onWordHover: async (text: string, rect: DOMRect) => {
+          try {
+            const definitions = await sendToBackground<
+              WordDefinitions[] | null
+            >('search/text', { text });
+
+            if (definitions && definitions.length > 0) {
+              removePopup();
+              lastPopup = createPopupElement(definitions, rect);
+              document.body.appendChild(lastPopup);
+            }
+          } catch {}
+        },
+        onWordLeave: () => {
+          // Don't remove immediately — let the user move to the popup
+        },
+      });
+
+      videoService.init();
+      subtitleRenderer.start();
+
+      // Update renderer when settings change
+      chrome.storage.onChanged.addListener(() => {
+        subtitleRenderer.updateSettings(settings);
+      });
+    }
+
+    // --- Selection mode ---
+    // On text selection, look up selected CJK text
+    document.addEventListener('mouseup', async () => {
+      if (!(settings?.isEnabled ?? true)) return;
+
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
+
+      const selectedText = selection.toString().trim();
+      if (!selectedText || selectedText.length > 50) return;
+
+      // Check if selection contains target language characters
+      const lang = settings?.targetLanguage ?? 'zh';
+      const hasTargetLang = [...selectedText].some((ch) => {
+        const code = ch.codePointAt(0)!;
+        return lang === 'zh'
+          ? isChineseCharacter(code)
+          : isKoreanLetter(code);
+      });
+      if (!hasTargetLang) return;
+
+      // Don't trigger if selecting inside our own popup
+      const anchorNode = selection.anchorNode?.parentElement;
+      if (anchorNode && lastPopup?.contains(anchorNode)) return;
+
+      try {
+        const definitions = await sendToBackground<
+          WordDefinitions[] | null
+        >('search/text', { text: selectedText });
+
+        if (definitions && definitions.length > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          removePopup();
+          lastPopup = createPopupElement(definitions, rect);
+          document.body.appendChild(lastPopup);
+        }
+      } catch {}
+    });
+
+    // --- Save word shortcut (s or b key while popup is visible) ---
+    document.addEventListener('keydown', async (e) => {
+      if (e.key !== 's' && e.key !== 'b') return;
+      if (!lastPopup) return;
+      // Don't trigger if typing in an input
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.getAttribute('contenteditable') === 'true'
+      ) {
+        return;
+      }
+
+      // Save the first definition's word
+      // The popup data is not stored, so we re-lookup from the locked range
+      // This is a basic implementation — sends the currently hovered text
+      if (lockedRangeNode && lockedRangeOffset >= 0) {
+        const textContent = lockedRangeNode.textContent ?? '';
+        const lookupText = textContent.substring(
+          lockedRangeOffset,
+          lockedRangeOffset + 12,
+        );
+
+        const lang = settings?.targetLanguage ?? 'zh';
+        const script =
+          lang === 'zh'
+            ? (settings?.characterType?.startsWith('traditional')
+                ? 'traditional'
+                : 'simplified')
+            : 'hangul';
+
+        try {
+          const definitions = await sendToBackground<
+            WordDefinitions[] | null
+          >('search/text', { text: lookupText });
+
+          if (definitions && definitions.length > 0) {
+            const def = definitions[0];
+            const word =
+              'hangul' in def.word
+                ? (def.word as { hangul: string }).hangul
+                : (def.word as Record<string, string>)[script];
+
+            // Detect source type
+            let sourceType: SourceOptions = 'others';
+            if (window.location.hostname.includes('netflix.com'))
+              sourceType = 'netflix';
+            else if (window.location.hostname.includes('youtube.com'))
+              sourceType = 'youtube';
+
+            await sendToBackground('words/toggleSave', {
+              word,
+              language: lang,
+              script,
+              definitions: def.definitions,
+              transliteration: def.transliteration?.pinyin ?? '',
+              writtenAlternatives: def.word,
+              sourceUrl: window.location.href,
+            });
+          }
+        } catch {}
+      }
+    });
   },
 });
