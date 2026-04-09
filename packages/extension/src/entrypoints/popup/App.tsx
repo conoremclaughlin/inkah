@@ -304,7 +304,7 @@ export default function App() {
         }}
       >
         <button
-          onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('/bookmarks.html') })}
+          onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('/saved.html') })}
           style={buttonStyle}
         >
           <Bookmark size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
