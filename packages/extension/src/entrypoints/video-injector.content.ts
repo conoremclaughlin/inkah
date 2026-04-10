@@ -40,9 +40,13 @@ function initNetflixInterception() {
     const data = parseMock.apply(this, arguments as any);
     if (data?.result?.timedtexttracks) {
       lastSubtitleData = data.result;
-      window.dispatchEvent(
-        new CustomEvent('inkahsubs_data', { detail: data.result }),
-      );
+      // Serialize as JSON string to survive structured cloning across worlds
+      try {
+        const serialized = stringifyMock(data.result);
+        window.dispatchEvent(
+          new CustomEvent('inkahsubs_data', { detail: serialized }),
+        );
+      } catch {}
     }
     return data;
   };
@@ -117,9 +121,12 @@ function initNetflixInterception() {
   window.addEventListener('inkahContentReady', () => {
     // Re-fire the subtitle track data so content script can cache URLs
     if (lastSubtitleData) {
-      window.dispatchEvent(
-        new CustomEvent('inkahsubs_data', { detail: lastSubtitleData }),
-      );
+      try {
+        const serialized = stringifyMock(lastSubtitleData);
+        window.dispatchEvent(
+          new CustomEvent('inkahsubs_data', { detail: serialized }),
+        );
+      } catch {}
     }
     // Re-fire subtitle language change
     if (inkah.isLoaded && inkah.currentLanguage) {

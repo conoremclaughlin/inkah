@@ -101,10 +101,19 @@ export class NetflixService implements VideoService {
     return videos[videos.length - 1];
   }
 
-  // Ported verbatim from old extension's processSubData()
+  // Ported from old extension's processSubData()
   private processSubData(event: any) {
-    const detail = event.detail;
+    let detail = event.detail;
     if (!detail) return;
+
+    // MAIN world serializes as JSON string to survive structured cloning
+    if (typeof detail === 'string') {
+      try {
+        detail = JSON.parse(detail);
+      } catch {
+        return;
+      }
+    }
 
     // Only process EPISODE and MOVIE types
     if (!['EPISODE', 'MOVIE'].includes(detail.viewableType)) {
