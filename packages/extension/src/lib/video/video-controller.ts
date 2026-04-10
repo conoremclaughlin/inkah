@@ -49,6 +49,7 @@ export class VideoController {
   private subFontSize = 100;
   private autoPause = true;
   private wasAutoPaused = false;
+  private isHoveringSubWord = false; // Prevent re-render while hovering
   private currentSubIndex = -1;
   private userScrolledTime = 0;
   private ignoreNextScroll = false;
@@ -219,6 +220,10 @@ export class VideoController {
 
     const text = activeCues.map((c) => getCleanSubText(c.text)).join('\n');
     if (text === this.currentText) return;
+
+    // Don't destroy DOM while user is hovering a subtitle word
+    if (this.isHoveringSubWord) return;
+
     this.currentText = text;
 
     this.subsContainer.innerHTML = '';
@@ -262,6 +267,7 @@ export class VideoController {
 
         const lookupText = getLookupText(tokens, ti);
         span.addEventListener('mouseenter', async () => {
+          this.isHoveringSubWord = true;
           span.style.color = '#1296ba';
           // Auto-pause video on subtitle hover
           if (this.autoPause) {
@@ -280,6 +286,7 @@ export class VideoController {
           } catch {}
         });
         span.addEventListener('mouseleave', () => {
+          this.isHoveringSubWord = false;
           span.style.color = '';
           // Resume if we auto-paused
           if (this.wasAutoPaused) {

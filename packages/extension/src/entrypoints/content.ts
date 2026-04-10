@@ -78,6 +78,56 @@ export default defineContentScript({
       }
       lockedRangeNode = null;
       lockedRangeOffset = -1;
+
+      // Clear hover highlight (old code: selection.empty())
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        sel.empty();
+      }
+    }
+
+    /** Highlight the matched word using browser selection (from old setHoverSelection) */
+    function highlightMatchedWord(
+      node: Node,
+      offset: number,
+      def: WordDefinitions,
+    ) {
+      try {
+        // Get the matched word's length
+        const word = 'hangul' in def.word
+          ? (def.word as { hangul: string }).hangul
+          : (def.word as { simplified: string }).simplified;
+        const matchLength = word.length;
+        const textContent = node.textContent ?? '';
+
+        // Compute end offset, accounting for zero-width characters
+        let endOffset = offset;
+        let charsMatched = 0;
+        while (charsMatched < matchLength && endOffset < textContent.length) {
+          const ch = textContent[endOffset];
+          // Skip zero-width non-joiners and zero-width spaces
+          if (ch === '\u200c' || ch === '\u200b') {
+            endOffset++;
+            continue;
+          }
+          charsMatched++;
+          endOffset++;
+        }
+
+        if (endOffset <= offset) return;
+
+        const selection = window.getSelection();
+        if (!selection) return;
+
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, Math.min(endOffset, textContent.length));
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } catch {
+        // Silently fail if range creation fails
+      }
     }
 
     function isHoverKeyPressed(e: MouseEvent): boolean {
@@ -135,25 +185,71 @@ export default defineContentScript({
 
       if (!rangeNode || rangeNode.nodeType !== Node.TEXT_NODE) return null;
       const textContent = rangeNode.textContent ?? '';
+
+      // Old code fix: if rangeOffset is past end of node, go back one character
+      // This happens when hovering the right half of the last character in a node
+      if (rangeOffset > 0 && rangeOffset >= textContent.length) {
+        rangeOffset = textContent.length - 1;
+      }
+
       if (rangeOffset >= textContent.length) return null;
 
-      const charCode = textContent.codePointAt(rangeOffset);
+      let charCode = textContent.codePointAt(rangeOffset);
+
+      // Old code fix: caretRangeFromPoint shifts hitbox left by ~half a character.
+      // If we didn't find a CJK char, try again at x adjusted by half char width
+      if (!charCode || !isTargetLanguageChar(charCode)) {
+        const parentEl = rangeNode.parentElement;
+        if (parentEl) {
+          const font = getComputedStyle(parentEl).font;
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (ctx && font) {
+            ctx.font = font;
+            const highlighted = textContent[rangeOffset] ?? '';
+            const charWidth = ctx.measureText(highlighted).width;
+            const adjustedX = x - charWidth / 2;
+
+            // Retry at adjusted position
+            if (document.caretRangeFromPoint) {
+              const r2 = document.caretRangeFromPoint(adjustedX, y);
+              if (r2) {
+                const node2 = r2.startContainer;
+                let offset2 = r2.startOffset;
+                if (node2.nodeType === Node.TEXT_NODE) {
+                  const text2 = node2.textContent ?? '';
+                  if (offset2 > 0 && offset2 >= text2.length) offset2 = text2.length - 1;
+                  if (offset2 < text2.length) {
+                    const code2 = text2.codePointAt(offset2);
+                    if (code2 && isTargetLanguageChar(code2)) {
+                      rangeNode = node2;
+                      rangeOffset = offset2;
+                      range = r2;
+                      charCode = code2;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       if (!charCode || !isTargetLanguageChar(charCode)) return null;
 
       // Get the bounding rect of the hovered character for stable positioning
       let rect: DOMRect;
       if (range) {
         range.setStart(rangeNode, rangeOffset);
-        range.setEnd(rangeNode, Math.min(rangeOffset + 1, textContent.length));
+        range.setEnd(rangeNode, Math.min(rangeOffset + 1, (rangeNode.textContent ?? '').length));
         rect = range.getBoundingClientRect();
       } else {
-        // Fallback: use cursor position
         rect = new DOMRect(x, y, 0, 16);
       }
 
-      const lookupText = textContent.substring(rangeOffset, rangeOffset + 12);
+      const lookupText = (rangeNode.textContent ?? '').substring(rangeOffset, rangeOffset + 12);
       return {
-        char: textContent[rangeOffset],
+        char: (rangeNode.textContent ?? '')[rangeOffset],
         text: lookupText,
         rangeNode,
         rangeOffset,
@@ -430,6 +526,13 @@ export default defineContentScript({
             lockedRangeOffset = result.rangeOffset;
             lastPopup = createPopupElement(definitions, result.rect);
             document.body.appendChild(lastPopup);
+
+            // Highlight the matched word in the text (old code's setHoverSelection)
+            highlightMatchedWord(
+              result.rangeNode,
+              result.rangeOffset,
+              definitions[0],
+            );
           } else {
             removePopup();
           }
