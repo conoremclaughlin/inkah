@@ -47,6 +47,8 @@ export class VideoController {
   private showRightPanel = false;
   private showBackground = true;
   private subFontSize = 100;
+  private autoPause = true;
+  private wasAutoPaused = false;
   private currentSubIndex = -1;
   private userScrolledTime = 0;
   private ignoreNextScroll = false;
@@ -124,6 +126,7 @@ export class VideoController {
 
     if (!language) {
       this.cues = [];
+      this.nativeCues = [];
       this.currentText = '';
       this.unmountAll();
       return;
@@ -132,6 +135,17 @@ export class VideoController {
     try {
       this.cues = await this.service.getSubs(language);
       console.log('[inkah] Fetched', this.cues.length, 'subtitle cues');
+
+      // Also fetch native language subtitles (user's browser language)
+      const userLang = navigator.language.split('-')[0];
+      if (userLang !== language) {
+        try {
+          this.nativeCues = await this.service.getSubs(userLang);
+          console.log('[inkah] Fetched', this.nativeCues.length, 'native subtitle cues (' + userLang + ')');
+        } catch {
+          this.nativeCues = [];
+        }
+      }
 
       if (this.cues.length > 0) {
         this.mountAll();
@@ -200,7 +214,7 @@ export class VideoController {
     container.appendChild(this.subsContainer);
   }
 
-  private renderCenterSubs(activeCues: SubtitleCue[]) {
+  private async renderCenterSubs(activeCues: SubtitleCue[]) {
     if (!this.subsContainer) return;
 
     const text = activeCues.map((c) => getCleanSubText(c.text)).join('\n');
@@ -214,12 +228,27 @@ export class VideoController {
     const wrapper = document.createElement('div');
     wrapper.className = 'inkahsubs-subtitles';
 
+    // Use dictionary tokenizer for proper word boundaries (longest-match)
+    // This gives us 为什么 instead of 为/什/么
     const lines = text.split('\n');
     for (const line of lines) {
       const lineEl = document.createElement('div');
       lineEl.className = `inkahsubs-subtitles__sub${this.showBackground ? ' inkahsubs-show-subtitles-background' : ''}`;
 
-      const tokens = tokenizeSubtitle(line, lang);
+      // Tokenize via background search service (longest-match)
+      let tokens: string[];
+      try {
+        const tokenResult = await this.callbacks.lookup(line);
+        if (tokenResult && tokenResult.length > 0) {
+          // Build tokens from the search results' word boundaries
+          tokens = this.buildTokensFromDefinitions(line, tokenResult, lang);
+        } else {
+          tokens = tokenizeSubtitle(line, lang);
+        }
+      } catch {
+        tokens = tokenizeSubtitle(line, lang);
+      }
+
       for (let ti = 0; ti < tokens.length; ti++) {
         const token = tokens[ti];
         if (/^\s+$/.test(token)) {
@@ -234,6 +263,14 @@ export class VideoController {
         const lookupText = getLookupText(tokens, ti);
         span.addEventListener('mouseenter', async () => {
           span.style.color = '#1296ba';
+          // Auto-pause video on subtitle hover
+          if (this.autoPause) {
+            const video = this.service.findVideo();
+            if (video && !video.paused) {
+              video.pause();
+              this.wasAutoPaused = true;
+            }
+          }
           try {
             const defs = await this.callbacks.lookup(lookupText);
             if (defs && defs.length > 0) {
@@ -244,6 +281,14 @@ export class VideoController {
         });
         span.addEventListener('mouseleave', () => {
           span.style.color = '';
+          // Resume if we auto-paused
+          if (this.wasAutoPaused) {
+            const video = this.service.findVideo();
+            if (video && video.paused) {
+              video.play();
+            }
+            this.wasAutoPaused = false;
+          }
         });
 
         lineEl.appendChild(span);
@@ -253,6 +298,44 @@ export class VideoController {
     }
 
     this.subsContainer.appendChild(wrapper);
+  }
+
+  /** Build word-boundary tokens from search results (longest-match segmentation) */
+  private buildTokensFromDefinitions(
+    text: string,
+    definitions: WordDefinitions[],
+    lang: SupportedLanguages,
+  ): string[] {
+    // The search results give us the longest matches from the start of the text
+    // Use them to build proper word boundaries
+    const tokens: string[] = [];
+    let pos = 0;
+
+    for (const def of definitions) {
+      const word = 'hangul' in def.word
+        ? (def.word as { hangul: string }).hangul
+        : (def.word as { simplified: string }).simplified;
+
+      // Find this word in the remaining text
+      const idx = text.indexOf(word, pos);
+      if (idx === -1) continue;
+
+      // Add any text before this word as individual character tokens
+      if (idx > pos) {
+        const gap = text.substring(pos, idx);
+        tokens.push(...tokenizeSubtitle(gap, lang));
+      }
+
+      tokens.push(word);
+      pos = idx + word.length;
+    }
+
+    // Remaining text after last match
+    if (pos < text.length) {
+      tokens.push(...tokenizeSubtitle(text.substring(pos), lang));
+    }
+
+    return tokens.length > 0 ? tokens : tokenizeSubtitle(text, lang);
   }
 
   // === Right Panel ===
@@ -555,7 +638,9 @@ export class VideoController {
     content.appendChild(this.makeSettingsToggle('Show transliteration', false, (_v) => {}));
 
     // Auto-pause
-    content.appendChild(this.makeSettingsToggle('Auto pause when hovering subtitles', false, (_v) => {}));
+    content.appendChild(this.makeSettingsToggle('Auto pause when hovering subtitles', this.autoPause, (v) => {
+      this.autoPause = v;
+    }));
 
     // Show progress bar
     content.appendChild(this.makeSettingsToggle('Show progress bar', true, (_v) => {}));
