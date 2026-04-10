@@ -86,6 +86,44 @@ function initNetflixInterception() {
     }
   }
 
+  // Handle seek requests from content script (old code's exact pattern)
+  function handleSeek(event: any) {
+    try {
+      const player = getPlayer();
+      if (!player) return;
+      player.seek(event.detail);
+      if (player.isPaused?.()) {
+        player.play();
+      }
+    } catch {}
+  }
+  window.addEventListener('inkahsubsSeek', handleSeek);
+
+  // Arrow key navigation between subtitles
+  function handleKeyboard(event: KeyboardEvent) {
+    if (event.code === 'ArrowLeft' && event.type === 'keydown') {
+      try {
+        const player = getPlayer();
+        if (player) {
+          // Seek back 5 seconds
+          const currentTime = player.getCurrentTime();
+          player.seek(Math.max(0, currentTime - 5000));
+        }
+      } catch {}
+    }
+    if (event.code === 'ArrowRight' && event.type === 'keydown') {
+      try {
+        const player = getPlayer();
+        if (player) {
+          // Seek forward 5 seconds
+          const currentTime = player.getCurrentTime();
+          player.seek(currentTime + 5000);
+        }
+      } catch {}
+    }
+  }
+  document.addEventListener('keydown', handleKeyboard, true);
+
   function loadSubtitles(player: any) {
     try {
       inkah.currentLanguage = player.getTimedTextTrack().bcp47;

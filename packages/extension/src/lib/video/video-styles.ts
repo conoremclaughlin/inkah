@@ -72,11 +72,49 @@ export const VIDEO_OVERLAY_CSS = `
   display: block;
 }
 
+.in_rightPanel_scrollContainer {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #555 transparent;
+}
+
+.in_scrollMiddleButtonContainer {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  text-align: center;
+  pointer-events: none;
+}
+
+.in_scrollMiddleButton {
+  pointer-events: auto;
+  background: rgba(18, 150, 186, 0.9);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.in_scrollMiddleButton:hover { opacity: 1; }
+
 .inkahsubs-right-sub {
-  padding: 8px 16px;
+  padding: 6px 8px 6px 0;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background 0.15s;
+  display: flex;
+  align-items: flex-start;
 }
 
 .inkahsubs-right-sub:hover {
@@ -86,6 +124,24 @@ export const VIDEO_OVERLAY_CSS = `
 .inkahsubs-right-sub.current {
   border-left-color: #1296ba;
   background: rgba(18, 150, 186, 0.1);
+}
+
+.inkahsubs-right-sub-caret {
+  width: 32px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: -4px;
+  color: transparent;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.inkahsubs-right-sub:hover .inkahsubs-right-sub-caret,
+.inkahsubs-right-sub.current .inkahsubs-right-sub-caret {
+  color: #1296ba;
 }
 
 .inkahsubs-right-sub-text {

@@ -48,6 +48,9 @@ export class VideoController {
   private showBackground = true;
   private subFontSize = 100;
   private currentSubIndex = -1;
+  private userScrolledTime = 0;
+  private ignoreNextScroll = false;
+  private static PAUSE_AUTO_SCROLL_TIME = 20000;
 
   constructor(
     service: VideoService,
@@ -294,30 +297,83 @@ export class VideoController {
 
     this.rightPanel.classList.add('inkahsubs-show');
 
+    // Scroll container (for scroll tracking)
+    const scrollContainer = document.createElement('div');
+    scrollContainer.className = 'in_rightPanel_scrollContainer';
+
+    // Scroll-to-center floating button (from old code)
+    const scrollBtnContainer = document.createElement('div');
+    scrollBtnContainer.className = 'in_scrollMiddleButtonContainer';
+    const scrollBtn = document.createElement('button');
+    scrollBtn.className = 'in_scrollMiddleButton';
+    scrollBtn.textContent = '⎯'; // center icon
+    scrollBtn.title = 'Scroll to current subtitle';
+    scrollBtn.addEventListener('click', () => {
+      const current = scrollContainer.querySelector('.inkahsubs-right-sub.current');
+      if (current) {
+        this.ignoreNextScroll = true;
+        current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+    scrollBtnContainer.appendChild(scrollBtn);
+    scrollContainer.appendChild(scrollBtnContainer);
+
+    // Manual scroll detection — pause auto-scroll for 20s (old code pattern)
+    scrollContainer.addEventListener('scroll', () => {
+      if (this.ignoreNextScroll) {
+        this.ignoreNextScroll = false;
+      } else {
+        this.userScrolledTime = Date.now();
+      }
+    });
+
     for (let i = 0; i < this.cues.length; i++) {
       const cue = this.cues[i];
+
+      // Time-gap margin (old code: marginBottom ranges [6, 42]px based on gap)
+      let marginBottom = 4;
+      if (i < this.cues.length - 1) {
+        const timeGap = this.cues[i + 1].start - cue.end;
+        marginBottom = Math.min(42, timeGap * 6 + 6);
+      }
+
       const row = document.createElement('div');
       row.className = 'inkahsubs-right-sub';
       row.dataset.index = String(i);
+      row.style.marginBottom = `${marginBottom}px`;
+      row.style.userSelect = 'text';
 
+      // Play caret (shows on hover and for active subtitle)
+      const caretCol = document.createElement('div');
+      caretCol.className = 'inkahsubs-right-sub-caret';
+      caretCol.innerHTML = '&#9654;'; // ▶
+      caretCol.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent('inkahsubsSeek', { detail: cue.start * 1000 }),
+        );
+      });
+      row.appendChild(caretCol);
+
+      // Text content
       const textEl = document.createElement('div');
       textEl.className = 'inkahsubs-right-sub-text';
       textEl.textContent = getCleanSubText(cue.text);
+      textEl.style.flexGrow = '1';
+      textEl.style.paddingRight = '4px';
       row.appendChild(textEl);
 
-      // Click to seek
+      // Click row to seek
       row.addEventListener('click', () => {
-        const video = this.service.findVideo();
-        if (video) {
-          // Use Netflix/YouTube player API via MAIN world — direct video.currentTime crashes Netflix
-          window.dispatchEvent(
-            new CustomEvent('inkahsubsSeek', { detail: cue.start * 1000 }),
-          );
-        }
+        window.dispatchEvent(
+          new CustomEvent('inkahsubsSeek', { detail: cue.start * 1000 }),
+        );
       });
 
-      this.rightPanel.appendChild(row);
+      scrollContainer.appendChild(row);
     }
+
+    this.rightPanel.appendChild(scrollContainer);
   }
 
   private updateRightPanelHighlight(index: number) {
@@ -329,9 +385,26 @@ export class VideoController {
       row.classList.toggle('current', i === index);
     });
 
-    // Auto-scroll to current
-    if (index >= 0 && index < rows.length) {
-      rows[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Auto-scroll — pause for 20s after manual scroll (old code pattern)
+    const shouldAutoScroll =
+      Date.now() - this.userScrolledTime > VideoController.PAUSE_AUTO_SCROLL_TIME;
+
+    if (shouldAutoScroll && index >= 0 && index < rows.length) {
+      const currentRow = rows[index] as HTMLElement;
+      const container = this.rightPanel.querySelector('.in_rightPanel_scrollContainer');
+      if (container && currentRow) {
+        // Check if element is in viewport of the scroll container
+        const containerRect = container.getBoundingClientRect();
+        const rowRect = currentRow.getBoundingClientRect();
+        const isVisible =
+          rowRect.bottom >= containerRect.top &&
+          rowRect.top <= containerRect.bottom;
+
+        if (!isVisible) {
+          this.ignoreNextScroll = true;
+          currentRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
     }
   }
 
