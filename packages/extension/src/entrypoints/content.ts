@@ -493,8 +493,6 @@ export default defineContentScript({
       // Don't re-lookup if hovering inside our own popup
       if (lastPopup?.contains(target)) return;
 
-      // Don't interfere with video subtitle overlay's own hover handlers
-      if (target?.closest?.('#inkahsubs, .inkahsubs-word, #inRightPanel')) return;
 
       if (hoverTimeout) {
         clearTimeout(hoverTimeout);

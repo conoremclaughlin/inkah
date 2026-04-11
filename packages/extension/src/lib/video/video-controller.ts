@@ -221,8 +221,10 @@ export class VideoController {
     const text = activeCues.map((c) => getCleanSubText(c.text)).join('\n');
     if (text === this.currentText) return;
 
-    // Don't destroy DOM while user is hovering a subtitle word
-    if (this.isHoveringSubWord) return;
+    // Don't destroy DOM while a popup is visible over the subtitles
+    // (the content script's hover handler is active)
+    const popup = document.getElementById('inkah-popup');
+    if (popup) return;
 
     this.currentText = text;
 
@@ -253,38 +255,10 @@ export class VideoController {
         span.className = 'inkahsubs-word';
         span.textContent = token;
 
-        const lookupText = getLookupText(tokens, ti);
-        span.addEventListener('mouseenter', async () => {
-          this.isHoveringSubWord = true;
-          span.style.color = '#1296ba';
-          // Auto-pause video on subtitle hover
-          if (this.autoPause) {
-            const video = this.service.findVideo();
-            if (video && !video.paused) {
-              video.pause();
-              this.wasAutoPaused = true;
-            }
-          }
-          try {
-            const defs = await this.callbacks.lookup(lookupText);
-            if (defs && defs.length > 0) {
-              const rect = span.getBoundingClientRect();
-              this.callbacks.showPopup(defs, rect);
-            }
-          } catch {}
-        });
-        span.addEventListener('mouseleave', () => {
-          this.isHoveringSubWord = false;
-          span.style.color = '';
-          // Resume if we auto-paused
-          if (this.wasAutoPaused) {
-            const video = this.service.findVideo();
-            if (video && video.paused) {
-              video.play();
-            }
-            this.wasAutoPaused = false;
-          }
-        });
+        // No per-span hover handlers — the content script's unified
+        // handleMouseMove + caretRangeFromPoint handles hover on these
+        // spans just like any other text on the page. This gives us
+        // proper longest-match lookup + selection highlighting for free.
 
         lineEl.appendChild(span);
       }
