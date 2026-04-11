@@ -215,7 +215,7 @@ export class VideoController {
     container.appendChild(this.subsContainer);
   }
 
-  private async renderCenterSubs(activeCues: SubtitleCue[]) {
+  private renderCenterSubs(activeCues: SubtitleCue[]) {
     if (!this.subsContainer) return;
 
     const text = activeCues.map((c) => getCleanSubText(c.text)).join('\n');
@@ -233,26 +233,14 @@ export class VideoController {
     const wrapper = document.createElement('div');
     wrapper.className = 'inkahsubs-subtitles';
 
-    // Use dictionary tokenizer for proper word boundaries (longest-match)
-    // This gives us 为什么 instead of 为/什/么
+    // Simple character-level tokenization for display.
+    // The hover handler does the proper longest-match dictionary lookup.
     const lines = text.split('\n');
     for (const line of lines) {
       const lineEl = document.createElement('div');
       lineEl.className = `inkahsubs-subtitles__sub${this.showBackground ? ' inkahsubs-show-subtitles-background' : ''}`;
 
-      // Tokenize via background search service (longest-match)
-      let tokens: string[];
-      try {
-        const tokenResult = await this.callbacks.lookup(line);
-        if (tokenResult && tokenResult.length > 0) {
-          // Build tokens from the search results' word boundaries
-          tokens = this.buildTokensFromDefinitions(line, tokenResult, lang);
-        } else {
-          tokens = tokenizeSubtitle(line, lang);
-        }
-      } catch {
-        tokens = tokenizeSubtitle(line, lang);
-      }
+      const tokens = tokenizeSubtitle(line, lang);
 
       for (let ti = 0; ti < tokens.length; ti++) {
         const token = tokens[ti];
@@ -307,43 +295,6 @@ export class VideoController {
     this.subsContainer.appendChild(wrapper);
   }
 
-  /** Build word-boundary tokens from search results (longest-match segmentation) */
-  private buildTokensFromDefinitions(
-    text: string,
-    definitions: WordDefinitions[],
-    lang: SupportedLanguages,
-  ): string[] {
-    // The search results give us the longest matches from the start of the text
-    // Use them to build proper word boundaries
-    const tokens: string[] = [];
-    let pos = 0;
-
-    for (const def of definitions) {
-      const word = 'hangul' in def.word
-        ? (def.word as { hangul: string }).hangul
-        : (def.word as { simplified: string }).simplified;
-
-      // Find this word in the remaining text
-      const idx = text.indexOf(word, pos);
-      if (idx === -1) continue;
-
-      // Add any text before this word as individual character tokens
-      if (idx > pos) {
-        const gap = text.substring(pos, idx);
-        tokens.push(...tokenizeSubtitle(gap, lang));
-      }
-
-      tokens.push(word);
-      pos = idx + word.length;
-    }
-
-    // Remaining text after last match
-    if (pos < text.length) {
-      tokens.push(...tokenizeSubtitle(text.substring(pos), lang));
-    }
-
-    return tokens.length > 0 ? tokens : tokenizeSubtitle(text, lang);
-  }
 
   // === Right Panel ===
 
