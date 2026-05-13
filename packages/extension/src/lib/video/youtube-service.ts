@@ -33,21 +33,49 @@ export class YouTubeService implements VideoService {
     if (!language) return [];
 
     const videoId = this.getVideoId();
-    if (!videoId || !this.subCache[videoId]?.[language]) return [];
+    if (!videoId) return [];
 
-    try {
-      const url = new URL(this.subCache[videoId][language]);
-      url.searchParams.set('fmt', 'vtt');
-      const resp = await fetch(url.href);
-      const text = await resp.text();
-      return parseVtt(text);
-    } catch {
-      return [];
+    // Direct cache hit — exact language URL was intercepted
+    if (this.subCache[videoId]?.[language]) {
+      try {
+        const url = new URL(this.subCache[videoId][language]);
+        url.searchParams.set('fmt', 'vtt');
+        const resp = await fetch(url.href);
+        const text = await resp.text();
+        return parseVtt(text);
+      } catch {
+        return [];
+      }
     }
+
+    // Fallback: use any cached URL + tlang for auto-translated subtitles
+    const cached = this.subCache[videoId];
+    if (cached) {
+      const anyUrl = Object.values(cached)[0];
+      if (anyUrl) {
+        try {
+          const url = new URL(anyUrl);
+          url.searchParams.set('tlang', language);
+          url.searchParams.set('fmt', 'vtt');
+          const resp = await fetch(url.href);
+          const text = await resp.text();
+          const cues = parseVtt(text);
+          if (cues.length > 0) return cues;
+        } catch {}
+      }
+    }
+
+    return [];
   }
 
   findVideo(): HTMLVideoElement | null {
     return document.querySelector('video');
+  }
+
+  getAvailableLanguages(): string[] {
+    const videoId = this.getVideoId();
+    if (!videoId || !this.subCache[videoId]) return [];
+    return Object.keys(this.subCache[videoId]);
   }
 
   private getVideoId(): string | null {

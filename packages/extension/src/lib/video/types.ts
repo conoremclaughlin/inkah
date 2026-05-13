@@ -8,4 +8,5 @@ export interface VideoService {
   init(): void;
   getSubs(language: string): Promise<SubtitleCue[]>;
   findVideo(): HTMLVideoElement | null;
+  getAvailableLanguages(): string[];
 }

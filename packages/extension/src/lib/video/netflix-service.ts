@@ -57,8 +57,10 @@ export class NetflixService implements VideoService {
       return [];
     }
 
+    // Match exact key, or key+[cc], or strip [cc] from input and match base
+    const baseLang = language.replace(/\[cc\]$/, '');
     const langKey = Object.keys(subsList).find(
-      (key) => key === language || key === ccLanguage,
+      (key) => key === language || key === ccLanguage || key === baseLang || key === baseLang + SUB_TYPES.closedcaptions,
     );
 
     if (!langKey) {
@@ -159,6 +161,13 @@ export class NetflixService implements VideoService {
 
     const cached = Object.keys(this.subCache[detail.movieId]);
     console.log('[inkah] Cached', cached.length, 'subtitle tracks:', cached.join(', '));
+  }
+
+  getAvailableLanguages(): string[] {
+    const videoId = this.currentVideoId || this.getMovieId();
+    const subsList = this.subCache[videoId];
+    if (!subsList) return [];
+    return Object.keys(subsList).filter((k) => !k.includes('forced'));
   }
 
   private randomProperty(obj: any): any {
