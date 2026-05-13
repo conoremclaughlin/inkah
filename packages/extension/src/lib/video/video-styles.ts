@@ -1,13 +1,13 @@
 /** All video overlay CSS — injected once when video subtitles are active */
 export const VIDEO_OVERLAY_CSS = `
-/* === Hide native subtitles === */
-.player-timedtext { display: none !important; }
-.image-based-subtitles { display: none !important; }
-.captions-text { display: none !important; }
-.ytp-caption-segment { display: none !important; }
-.ytp-caption-window-container { display: none !important; }
+/* === Hide native subtitles (only when Inkah is enabled) === */
+.inkahsubs-enable .player-timedtext { display: none !important; }
+.inkahsubs-enable .image-based-subtitles { display: none !important; }
+.inkahsubs-enable .captions-text { display: none !important; }
+.inkahsubs-enable .ytp-caption-segment { display: none !important; }
+.inkahsubs-enable .ytp-caption-window-container { display: none !important; }
 
-/* === Center subtitle overlay === */
+/* === Center subtitle overlay (hidden unless Inkah enabled) === */
 #inkahsubs {
   position: absolute;
   bottom: 80px;
@@ -21,7 +21,9 @@ export const VIDEO_OVERLAY_CSS = `
   line-height: 1.4;
   user-select: text;
   -webkit-user-select: text;
+  display: none;
 }
+.inkahsubs-enable #inkahsubs { display: block; }
 
 .inkahsubs-subtitles {
   display: flex;
@@ -52,6 +54,22 @@ export const VIDEO_OVERLAY_CSS = `
   color: #1296ba;
 }
 
+/* Transliteration ruby annotations */
+.inkahsubs-word ruby { ruby-position: over; }
+.inkahsubs-word rt.inkahsubs-translit {
+  font-size: 0.45em;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: normal;
+  letter-spacing: 0.02em;
+}
+
+/* === Native double subtitle line === */
+.inkahsubs-native-line {
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+  margin-top: 2px;
+}
+
 /* === Right panel === */
 #inRightPanel {
   position: absolute;
@@ -68,7 +86,7 @@ export const VIDEO_OVERLAY_CSS = `
   scrollbar-color: #555 transparent;
 }
 
-#inRightPanel.inkahsubs-show {
+.inkahsubs-enable #inRightPanel.inkahsubs-show {
   display: block;
 }
 
@@ -82,39 +100,39 @@ export const VIDEO_OVERLAY_CSS = `
 }
 
 .in_scrollMiddleButtonContainer {
-  position: sticky;
-  top: 8px;
   z-index: 10;
-  text-align: center;
+  position: fixed;
+  top: 15px;
+  right: 22px;
   pointer-events: none;
 }
 
 .in_scrollMiddleButton {
   pointer-events: auto;
-  background: rgba(18, 150, 186, 0.9);
+  background: #177ddc;
   color: #fff;
   border: none;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.7;
-  transition: opacity 0.2s;
+  padding: 5px;
+  transition: opacity 0.2s, background 0.2s;
 }
 
-.in_scrollMiddleButton:hover { opacity: 1; }
+.in_scrollMiddleButton:hover { background: #1890ff; }
 
 .inkahsubs-right-sub {
-  padding: 6px 8px 6px 0;
+  padding: 8px 10px 8px 0;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background 0.15s;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .inkahsubs-right-sub:hover {
@@ -127,26 +145,29 @@ export const VIDEO_OVERLAY_CSS = `
 }
 
 .inkahsubs-right-sub-caret {
-  width: 32px;
+  width: 44px;
+  min-height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   flex-shrink: 0;
-  margin-right: -4px;
   color: transparent;
-  font-size: 10px;
+  font-size: 22px;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.15s, opacity 0.15s;
+  opacity: 0.6;
+  align-self: center;
 }
 
 .inkahsubs-right-sub:hover .inkahsubs-right-sub-caret,
 .inkahsubs-right-sub.current .inkahsubs-right-sub-caret {
-  color: #1296ba;
+  color: #4b85fc;
+  opacity: 1;
 }
 
 .inkahsubs-right-sub-text {
   color: #ccc;
-  font-size: 14px;
+  font-size: 20px;
   line-height: 1.5;
 }
 
@@ -156,7 +177,7 @@ export const VIDEO_OVERLAY_CSS = `
 
 .inkahsubs-right-sub-native {
   color: #888;
-  font-size: 12px;
+  font-size: 18px;
   margin-top: 2px;
 }
 
@@ -214,11 +235,32 @@ export const VIDEO_OVERLAY_CSS = `
 #netflix .inkahsubs-settings-container-logo img {
   width: 1.6em;
   height: 1.6em;
+  margin-top: -0.45em;
 }
 
 /* YouTube sizing */
 #youtube .inkahsubs-settings { width: 36px; height: 36px; }
-#youtube .ytp-fullscreen .inkahsubs-settings { width: 54px; height: 54px; }
+#youtube .ytp-fullscreen .inkahsubs-settings {
+  width: 54px;
+  height: 54px;
+}
+#youtube .ytp-fullscreen .inkahsubs-settings-container-logo img {
+  width: 28px;
+  height: 54px;
+}
+
+/* Netflix settings dropdown position (old code: netflix.scss) */
+#netflix .inkahsubs-settings-wrapper {
+  bottom: 75px;
+  right: 20px;
+}
+
+/* YouTube settings dropdown position (old code: youtube.scss) */
+#youtube .inkahsubs-settings-wrapper {
+  bottom: 50px;
+  margin-left: -60px;
+  right: auto;
+}
 
 /* Settings dropdown wrapper */
 .inkahsubs-settings-wrapper {
@@ -442,7 +484,7 @@ export const VIDEO_OVERLAY_CSS = `
   color: #ccc;
 }
 
-/* === Progress bar === */
+/* === Progress bar (hidden unless Inkah enabled) === */
 .inkahsubs-progress-bar {
   position: absolute;
   bottom: 0;
@@ -451,10 +493,11 @@ export const VIDEO_OVERLAY_CSS = `
   height: 15px;
   background: #171717;
   z-index: 11;
-  display: flex;
+  display: none;
   align-items: center;
   overflow: hidden;
 }
+.inkahsubs-enable .inkahsubs-progress-bar { display: flex; }
 
 .inkahsubs-progress-indicator {
   position: absolute;
@@ -532,13 +575,18 @@ html[id="netflix"] .inkahsubs-enable #inkahsubs {
   }
 }
 
-/* Netflix right panel: shift video left to make room */
-.watch-video.watch-video__hasRightPanel .watch-video--player-view {
+/* Netflix right panel: shift video left to make room (only when enabled) */
+.inkahsubs-enable .watch-video.watch-video__hasRightPanel .watch-video--player-view {
   width: calc(100% - 425px) !important;
 }
 
-.watch-video.watch-video__hasRightPanel #inRightPanel {
+.inkahsubs-enable .watch-video.watch-video__hasRightPanel #inRightPanel {
   display: block !important;
+}
+
+/* Center subtitles within the narrowed video area, not full screen */
+.inkahsubs-enable .watch-video.watch-video__hasRightPanel #inkahsubs {
+  left: calc((100% - 425px) / 2);
 }
 
 /* === YouTube-specific === */

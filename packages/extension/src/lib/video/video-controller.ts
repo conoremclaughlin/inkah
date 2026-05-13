@@ -4,6 +4,7 @@ import { VIDEO_OVERLAY_CSS } from './video-styles';
 import {
   getCleanSubText,
   getSubsForCurrentTime,
+  getNativeSubsForTimeRange,
   tokenizeSubtitle,
   getLookupText,
   isNetflix,
@@ -19,6 +20,8 @@ interface VideoControllerCallbacks {
   lookup: LookupFn;
   showPopup: PopupFn;
   removePopup: RemovePopupFn;
+  precacheSubtitle?: (text: string) => Promise<void> | void;
+  getTransliterationForText?: (text: string) => Map<number, string>;
 }
 
 /**
@@ -46,9 +49,13 @@ export class VideoController {
   // State
   private showRightPanel = false;
   private showBackground = true;
-  private subFontSize = 100;
+  private showNativeDoubled = false;
+  private nativeLanguage = navigator.language.split('-')[0];
+  private subFontSize = 125;
   private autoPause = true;
   private wasAutoPaused = false;
+  private enabled = true;
+  private showTransliteration = false;
   private isHoveringSubWord = false; // Prevent re-render while hovering
   private currentSubIndex = -1;
   private userScrolledTime = 0;
@@ -69,8 +76,35 @@ export class VideoController {
     this.settings = settings;
   }
 
+  /** Pause video — Netflix uses button clicks, YouTube uses direct API */
+  private pauseVideo() {
+    if (isNetflix()) {
+      const pauseBtn = document.querySelector(
+        '[data-uia="control-play-pause-pause"]',
+      ) as HTMLElement | null;
+      if (pauseBtn) pauseBtn.click();
+    } else {
+      const video = document.querySelector('video');
+      if (video && !video.paused) video.pause();
+    }
+  }
+
+  /** Resume video — Netflix uses button clicks, YouTube uses direct API */
+  private playVideo() {
+    if (isNetflix()) {
+      const playBtn = document.querySelector(
+        '[data-uia="control-play-pause-play"]',
+      ) as HTMLElement | null;
+      if (playBtn) playBtn.click();
+    } else {
+      const video = document.querySelector('video');
+      if (video?.paused) video.play();
+    }
+  }
+
   async start() {
     this.injectStyles();
+    document.documentElement.classList.add('inkahsubs-enable');
 
     // Set HTML id for Netflix/YouTube CSS targeting
     if (isNetflix()) {
@@ -99,6 +133,7 @@ export class VideoController {
 
   stop() {
     cancelAnimationFrame(this.animFrame);
+    document.documentElement.classList.remove('inkahsubs-enable');
     this.unmountAll();
     this.removeStyles();
     window.removeEventListener(
@@ -137,18 +172,17 @@ export class VideoController {
       this.cues = await this.service.getSubs(language);
       console.log('[inkah] Fetched', this.cues.length, 'subtitle cues');
 
-      // Also fetch native language subtitles (user's browser language)
-      const userLang = navigator.language.split('-')[0];
-      if (userLang !== language) {
+      // Fetch double subtitle cues in the user's selected language
+      if (this.nativeLanguage !== language) {
         try {
-          this.nativeCues = await this.service.getSubs(userLang);
-          console.log('[inkah] Fetched', this.nativeCues.length, 'native subtitle cues (' + userLang + ')');
+          this.nativeCues = await this.service.getSubs(this.nativeLanguage);
+          console.log('[inkah] Fetched', this.nativeCues.length, 'native subtitle cues (' + this.nativeLanguage + ')');
         } catch {
           this.nativeCues = [];
         }
       }
 
-      if (this.cues.length > 0) {
+      if (this.cues.length > 0 && this.enabled) {
         this.mountAll();
         this.startTimeSync();
         this.renderRightPanel();
@@ -212,7 +246,38 @@ export class VideoController {
     if (this.subsContainer) return;
     this.subsContainer = document.createElement('div');
     this.subsContainer.id = 'inkahsubs';
+
+    // Auto-pause: mouseenter/mouseleave on the subtitle container
+    // (old code: center-subs.tsx lines 258-293, 333-335)
+    this.subsContainer.addEventListener('mouseenter', () => {
+      if (!this.autoPause) return;
+      const video = document.querySelector('video');
+      if (video && !video.paused) {
+        this.wasAutoPaused = true;
+        this.pauseVideo();
+      }
+    });
+    this.subsContainer.addEventListener('mouseleave', () => {
+      if (this.wasAutoPaused) {
+        this.wasAutoPaused = false;
+        this.playVideo();
+      }
+    });
+
     container.appendChild(this.subsContainer);
+  }
+
+  /** Compute responsive font size from percentage and video width (old code pattern) */
+  private computeFontSize(): number {
+    const video = this.service.findVideo();
+    const clientWidth = video?.clientWidth ?? 1024;
+    const minFontSize = clientWidth > 1000 ? 28 : 24;
+    return Math.round(
+      Math.max(
+        ((clientWidth / 100) * this.subFontSize) / 43,
+        minFontSize * (this.subFontSize / 100),
+      ),
+    );
   }
 
   private renderCenterSubs(activeCues: SubtitleCue[]) {
@@ -222,7 +287,6 @@ export class VideoController {
     if (text === this.currentText) return;
 
     // Don't destroy DOM while a popup is visible over the subtitles
-    // (the content script's hover handler is active)
     const popup = document.getElementById('inkah-popup');
     if (popup) return;
 
@@ -231,39 +295,81 @@ export class VideoController {
     this.subsContainer.innerHTML = '';
     if (!text) return;
 
+    // Pre-cache definitions for the current subtitle line so hover is instant
+    const cacheResult = this.callbacks.precacheSubtitle?.(text);
+    if (this.showTransliteration && cacheResult && typeof (cacheResult as Promise<void>).then === 'function') {
+      (cacheResult as Promise<void>).then(() => {
+        if (this.showTransliteration && this.currentText === text) {
+          this.currentText = '';
+        }
+      });
+    }
+
+    // Build transliteration map (position → pinyin) for ruby annotations
+    const translitMap = this.showTransliteration
+      ? this.callbacks.getTransliterationForText?.(text) ?? null
+      : null;
+
     const lang = this.settings.targetLanguage ?? 'zh';
+    const fontSize = this.computeFontSize();
     const wrapper = document.createElement('div');
     wrapper.className = 'inkahsubs-subtitles';
+    wrapper.style.fontSize = `${fontSize}px`;
 
-    // Simple character-level tokenization for display.
-    // The hover handler does the proper longest-match dictionary lookup.
+    // Target language subtitle lines (120% relative — old code pattern)
+    const targetDiv = document.createElement('div');
+    targetDiv.style.fontSize = '120%';
+
     const lines = text.split('\n');
-    for (const line of lines) {
+    let globalPos = 0;
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx];
       const lineEl = document.createElement('div');
       lineEl.className = `inkahsubs-subtitles__sub${this.showBackground ? ' inkahsubs-show-subtitles-background' : ''}`;
 
       const tokens = tokenizeSubtitle(line, lang);
-
-      for (let ti = 0; ti < tokens.length; ti++) {
-        const token = tokens[ti];
+      for (const token of tokens) {
         if (/^\s+$/.test(token)) {
           lineEl.appendChild(document.createTextNode(token));
+          globalPos += token.length;
           continue;
         }
-
         const span = document.createElement('span');
         span.className = 'inkahsubs-word';
-        span.textContent = token;
 
-        // No per-span hover handlers — the content script's unified
-        // handleMouseMove + caretRangeFromPoint handles hover on these
-        // spans just like any other text on the page. This gives us
-        // proper longest-match lookup + selection highlighting for free.
+        const translit = translitMap?.get(globalPos) ?? null;
+        if (translit) {
+          const ruby = document.createElement('ruby');
+          ruby.appendChild(document.createTextNode(token));
+          const rt = document.createElement('rt');
+          rt.className = 'inkahsubs-translit';
+          rt.textContent = translit;
+          ruby.appendChild(rt);
+          span.appendChild(ruby);
+        } else {
+          span.textContent = token;
+        }
 
         lineEl.appendChild(span);
+        globalPos += token.length;
       }
+      targetDiv.appendChild(lineEl);
+      if (lineIdx < lines.length - 1) globalPos++; // '\n' separator
+    }
+    wrapper.appendChild(targetDiv);
 
-      wrapper.appendChild(lineEl);
+    // Native double subtitles (75% relative — old code: center-subs.tsx line 349)
+    if (this.showNativeDoubled && activeCues.length > 0) {
+      const start = activeCues[0].start;
+      const end = activeCues[activeCues.length - 1].end;
+      const nativeMatches = getNativeSubsForTimeRange(this.nativeCues, start, end);
+      if (nativeMatches.length > 0) {
+        const nativeDiv = document.createElement('div');
+        nativeDiv.className = `inkahsubs-native-line inkahsubs-subtitles__sub${this.showBackground ? ' inkahsubs-show-subtitles-background' : ''}`;
+        nativeDiv.style.fontSize = '75%';
+        nativeDiv.textContent = nativeMatches.map((c) => getCleanSubText(c.text)).join(' ');
+        wrapper.appendChild(nativeDiv);
+      }
     }
 
     this.subsContainer.appendChild(wrapper);
@@ -316,12 +422,13 @@ export class VideoController {
     const scrollContainer = document.createElement('div');
     scrollContainer.className = 'in_rightPanel_scrollContainer';
 
-    // Scroll-to-center floating button (from old code)
+    // Scroll-to-center floating button (old code: VerticalAlignMiddleOutlined)
     const scrollBtnContainer = document.createElement('div');
     scrollBtnContainer.className = 'in_scrollMiddleButtonContainer';
     const scrollBtn = document.createElement('button');
     scrollBtn.className = 'in_scrollMiddleButton';
-    scrollBtn.textContent = '⎯'; // center icon
+    // SVG icon: vertical-align-middle (matches old antd VerticalAlignMiddleOutlined)
+    scrollBtn.innerHTML = '<svg viewBox="64 64 896 896" width="1em" height="1em" fill="currentColor"><path d="M859.9 474H164.1c-4.5 0-8.1 3.6-8.1 8v60c0 4.4 3.6 8 8.1 8h695.8c4.5 0 8.1-3.6 8.1-8v-60c0-4.4-3.6-8-8.1-8zm-353.6-74.7c2.9 3.7 8.5 3.7 11.3 0l100.8-127.5c3.7-4.7.4-11.7-5.7-11.7H550V104c0-4.4-3.6-8-8-8h-60c-4.4 0-8 3.6-8 8v156.1H411.2c-6 0-9.4 7-5.7 11.7l100.8 127.5zm11.4 225.4a7.14 7.14 0 00-11.3 0L405.6 752.3c-3.7 4.7-.4 11.7 5.7 11.7H474V920c0 4.4 3.6 8 8 8h60c4.4 0 8-3.6 8-8V764h62.8c6 0 9.4-7 5.7-11.7L517.7 624.7z"/></svg>';
     scrollBtn.title = 'Scroll to current subtitle';
     scrollBtn.addEventListener('click', () => {
       const current = scrollContainer.querySelector('.inkahsubs-right-sub.current');
@@ -451,14 +558,6 @@ export class VideoController {
 
     if (!anchorNode) return;
 
-    // Navigate up to find the right insertion parent
-    // Old code: referenceNode = node.parentNode, parentNode = referenceNode.parentNode
-    // Then: parentNode.insertBefore(settingNode, referenceNode)
-    const referenceNode = anchorNode.parentElement;
-    if (!referenceNode) return;
-    const parentNode = referenceNode.parentElement;
-    if (!parentNode) return;
-
     // Create settings container
     this.settingsEl = document.createElement('div');
     this.settingsEl.className = 'inkahsubs-settings';
@@ -466,8 +565,19 @@ export class VideoController {
     // Build logo + dropdown
     this.buildSettingsContent(this.settingsEl);
 
-    // Insert BEFORE the fullscreen button's container (old code's exact pattern)
-    parentNode.insertBefore(this.settingsEl, referenceNode);
+    if (isYouTube()) {
+      // YouTube: insert directly inside .ytp-right-controls, before the fullscreen button
+      const rightControls = anchorNode.parentElement;
+      if (!rightControls) return;
+      rightControls.insertBefore(this.settingsEl, anchorNode);
+    } else {
+      // Netflix: go two levels up — fullscreen button → wrapper div → controls bar
+      const referenceNode = anchorNode.parentElement;
+      if (!referenceNode) return;
+      const parentNode = referenceNode.parentElement;
+      if (!parentNode) return;
+      parentNode.insertBefore(this.settingsEl, referenceNode);
+    }
   }
 
   private buildSettingsContent(container: HTMLElement) {
@@ -561,13 +671,40 @@ export class VideoController {
     content.appendChild(settingsHeader);
 
     // Enable toggle
-    content.appendChild(this.makeSettingsToggle('Enable', true, (_v) => {}));
+    content.appendChild(this.makeSettingsToggle('Enable', true, (v) => {
+      this.enabled = v;
+      if (v) {
+        document.documentElement.classList.add('inkahsubs-enable');
+        this.currentText = '';
+        if (this.showRightPanel) {
+          const pc = this.findPlayerContainer();
+          if (pc) pc.classList.add('watch-video__hasRightPanel');
+        }
+        if (this.cues.length > 0) {
+          this.startTimeSync();
+        }
+      } else {
+        document.documentElement.classList.remove('inkahsubs-enable');
+        cancelAnimationFrame(this.animFrame);
+        if (this.subsContainer) this.subsContainer.innerHTML = '';
+        this.currentText = '';
+        this.callbacks.removePopup();
+        const pc = this.findPlayerContainer();
+        if (pc) pc.classList.remove('watch-video__hasRightPanel');
+      }
+    }));
 
-    // Show native double subtitles
-    content.appendChild(this.makeSettingsToggle('Show native double subtitles', false, (_v) => {}));
+    // Show double subtitles
+    content.appendChild(this.makeSettingsToggle('Show double subtitles', this.showNativeDoubled, (v) => {
+      this.showNativeDoubled = v;
+      this.currentText = ''; // force re-render
+    }));
 
     // Show transliteration
-    content.appendChild(this.makeSettingsToggle('Show transliteration', false, (_v) => {}));
+    content.appendChild(this.makeSettingsToggle('Show transliteration', this.showTransliteration, (v) => {
+      this.showTransliteration = v;
+      this.currentText = '';
+    }));
 
     // Auto-pause
     content.appendChild(this.makeSettingsToggle('Auto pause when hovering subtitles', this.autoPause, (v) => {
@@ -619,13 +756,58 @@ export class VideoController {
         this.subFontSize = Math.max(60, this.subFontSize - 5);
         const el = document.getElementById('inkah-font-value');
         if (el) el.textContent = `${this.subFontSize}%`;
-        this.currentText = '';
+        this.currentText = ''; // force re-render with new size
       });
       document.getElementById('inkah-font-plus')?.addEventListener('click', () => {
         this.subFontSize = Math.min(200, this.subFontSize + 5);
         const el = document.getElementById('inkah-font-value');
         if (el) el.textContent = `${this.subFontSize}%`;
-        this.currentText = '';
+        this.currentText = ''; // force re-render with new size
+      });
+    }, 0);
+
+    // Double subtitles language selector (old code: language.tsx)
+    const langRow = document.createElement('div');
+    langRow.className = 'inkahsubs-settings-language inkahsubs-settings__item';
+    langRow.innerHTML = `
+      <div class="inkahsubs-settings__item__left-side"><span>Double subtitles language</span></div>
+      <div class="inkahsubs-settings__item__right-side">
+        <select class="inkahsubs-settings__select" id="inkah-native-lang-select"></select>
+      </div>`;
+    content.appendChild(langRow);
+
+    // Populate language selector after DOM insertion
+    setTimeout(() => {
+      const select = document.getElementById('inkah-native-lang-select') as HTMLSelectElement | null;
+      if (!select) return;
+
+      const available = this.service.getAvailableLanguages();
+      const langs = available.length > 0 ? available : Object.keys(LANGUAGE_MAP);
+
+      for (const lang of langs.sort((a, b) => {
+        const nameA = LANGUAGE_MAP[a] ?? a;
+        const nameB = LANGUAGE_MAP[b] ?? b;
+        return nameA.localeCompare(nameB);
+      })) {
+        const opt = document.createElement('option');
+        opt.value = lang;
+        const ccIndex = lang.indexOf('[cc]');
+        const normalizedLang = ccIndex !== -1 ? lang.substring(0, ccIndex) : lang;
+        opt.textContent = ccIndex !== -1
+          ? `${LANGUAGE_MAP[normalizedLang] ?? normalizedLang} (cc)`
+          : LANGUAGE_MAP[normalizedLang] ?? lang;
+        if (lang === this.nativeLanguage) opt.selected = true;
+        select.appendChild(opt);
+      }
+
+      select.addEventListener('change', async () => {
+        this.nativeLanguage = select.value;
+        try {
+          this.nativeCues = await this.service.getSubs(this.nativeLanguage);
+          this.currentText = ''; // force re-render
+        } catch {
+          this.nativeCues = [];
+        }
       });
     }, 0);
 
@@ -764,6 +946,7 @@ export class VideoController {
   private startTimeSync() {
     const tick = () => {
       this.animFrame = requestAnimationFrame(tick);
+      if (!this.enabled) return;
       const video = this.service.findVideo();
       if (!video) return;
 
@@ -796,3 +979,35 @@ export class VideoController {
     this.styleEl = null;
   }
 }
+
+// Ported from old code: language.tsx languageMap
+const LANGUAGE_MAP: Record<string, string> = {
+  af: 'Afrikaans', sq: 'Albanian', am: 'Amharic', ar: 'Arabic',
+  hy: 'Armenian', az: 'Azerbaijani', eu: 'Basque', be: 'Belarusian',
+  bn: 'Bengali', bs: 'Bosnian', bg: 'Bulgarian', ca: 'Catalan',
+  ceb: 'Cebuano', 'zh-CN': 'Chinese (Simplified)', 'zh-Hans': 'Chinese (Simplified)',
+  'zh-TW': 'Chinese (Traditional)', 'zh-Hant': 'Chinese (Traditional)',
+  co: 'Corsican', hr: 'Croatian', cs: 'Czech', da: 'Danish',
+  nl: 'Dutch', en: 'English', eo: 'Esperanto', et: 'Estonian',
+  fi: 'Finnish', fr: 'French', fy: 'Frisian', gl: 'Galician',
+  ka: 'Georgian', de: 'German', el: 'Greek', gu: 'Gujarati',
+  ht: 'Haitian Creole', ha: 'Hausa', haw: 'Hawaiian', he: 'Hebrew',
+  hi: 'Hindi', hmn: 'Hmong', hu: 'Hungarian', is: 'Icelandic',
+  ig: 'Igbo', id: 'Indonesian', ga: 'Irish', it: 'Italian',
+  ja: 'Japanese', jv: 'Javanese', kn: 'Kannada', kk: 'Kazakh',
+  km: 'Khmer', ko: 'Korean', ku: 'Kurdish', ky: 'Kyrgyz',
+  lo: 'Lao', la: 'Latin', lv: 'Latvian', lt: 'Lithuanian',
+  lb: 'Luxembourgish', mk: 'Macedonian', mg: 'Malagasy', ms: 'Malay',
+  ml: 'Malayalam', mt: 'Maltese', mi: 'Maori', mr: 'Marathi',
+  mn: 'Mongolian', my: 'Myanmar (Burmese)', ne: 'Nepali', no: 'Norwegian',
+  ny: 'Nyanja (Chichewa)', ps: 'Pashto', fa: 'Persian', pl: 'Polish',
+  pt: 'Portuguese', pa: 'Punjabi', ro: 'Romanian', ru: 'Russian',
+  sm: 'Samoan', gd: 'Scots Gaelic', sr: 'Serbian', st: 'Sesotho',
+  sn: 'Shona', sd: 'Sindhi', si: 'Sinhala', sk: 'Slovak',
+  sl: 'Slovenian', so: 'Somali', es: 'Spanish', su: 'Sundanese',
+  sw: 'Swahili', sv: 'Swedish', tl: 'Tagalog (Filipino)', tg: 'Tajik',
+  ta: 'Tamil', te: 'Telugu', th: 'Thai', tr: 'Turkish',
+  uk: 'Ukrainian', ur: 'Urdu', uz: 'Uzbek', vi: 'Vietnamese',
+  cy: 'Welsh', xh: 'Xhosa', yi: 'Yiddish', yo: 'Yoruba', zu: 'Zulu',
+  zh: 'Chinese',
+};

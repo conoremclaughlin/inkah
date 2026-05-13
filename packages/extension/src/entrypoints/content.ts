@@ -64,12 +64,87 @@ export default defineContentScript({
       settings = { ...settings, ...patch } as Settings;
     });
 
+    // --- Definition cache for instant subtitle hover ---
+    const defCache = new Map<string, WordDefinitions[] | null>();
+
+    /** Pre-cache definitions for all character positions in a subtitle line.
+     *  Uses batch endpoint for a single round-trip instead of N individual calls. */
+    function precacheSubtitle(text: string): Promise<void> {
+      const texts: string[] = [];
+      for (let i = 0; i < text.length; i++) {
+        const ch = text.codePointAt(i);
+        if (!ch) continue;
+        const lang = settings?.targetLanguage ?? 'zh';
+        const isCJK = lang === 'zh' ? isChineseCharacter(ch) : isKoreanLetter(ch);
+        if (!isCJK) continue;
+
+        const substr = text.substring(i, i + 15);
+        if (!defCache.has(substr)) {
+          texts.push(substr);
+        }
+      }
+      if (texts.length === 0) return Promise.resolve();
+
+      return sendToBackground<Record<string, WordDefinitions[] | null>>(
+        'search/batch', { texts },
+      )
+        .then((results) => {
+          for (const [key, defs] of Object.entries(results)) {
+            defCache.set(key, defs);
+          }
+        })
+        .catch(() => {});
+    }
+
+    /** Build a position-indexed transliteration map for ruby annotations.
+     *  Walks through text doing greedy longest-match from defCache, mapping
+     *  each character position to its pinyin/zhuyin syllable. */
+    function getTransliterationForText(text: string): Map<number, string> {
+      const result = new Map<number, string>();
+      const lang = settings?.targetLanguage ?? 'zh';
+      let i = 0;
+      while (i < text.length) {
+        const ch = text.codePointAt(i);
+        if (!ch) { i++; continue; }
+        const isCJK = lang === 'zh' ? isChineseCharacter(ch) : isKoreanLetter(ch);
+        if (!isCJK) { i++; continue; }
+
+        const substr = text.substring(i, i + 15);
+        const defs = defCache.get(substr);
+        if (defs && defs.length > 0) {
+          const def = defs[0];
+          const word = 'hangul' in def.word
+            ? (def.word as { hangul: string }).hangul
+            : (def.word as { simplified: string }).simplified;
+          const pinyin = def.transliteration?.pinyin;
+          if (pinyin) {
+            const translitType = settings?.transliteration?.zh ?? 'pinyin';
+            const formatted = translitType === 'zhuyin'
+              ? toZhuyinFromToneSuffix(pinyin)
+              : toPinyinFromToneSuffix(pinyin);
+            const syllables = formatted.split(' ');
+            for (let j = 0; j < word.length && j < syllables.length; j++) {
+              result.set(i + j, syllables[j]);
+            }
+            i += word.length;
+          } else {
+            i++;
+          }
+        } else {
+          i++;
+        }
+      }
+      return result;
+    }
+
     // --- Hover detection state ---
     let hoverTimeout: ReturnType<typeof setTimeout> | null = null;
     let lastPopup: HTMLElement | null = null;
     // Track the currently hovered text position so popup stays fixed
     let lockedRangeNode: Node | null = null;
     let lockedRangeOffset = -1;
+    // Video controller ref — set later if on Netflix/YouTube
+    let activeVideoController: VideoController | null = null;
 
     function removePopup() {
       if (lastPopup) {
@@ -84,44 +159,64 @@ export default defineContentScript({
       if (sel && !sel.isCollapsed) {
         sel.empty();
       }
+
+      // Auto-pause is now handled by mouseenter/mouseleave on the subs container
     }
 
     /** Highlight the matched word using browser selection (from old setHoverSelection) */
+    /**
+     * Highlight the matched word using browser Selection.
+     * Ported from old code's setHoverSelection — uses selectedNodes
+     * to find which text node the highlight end falls in.
+     */
     function highlightMatchedWord(
-      node: Node,
-      offset: number,
+      startNode: Node,
+      startOffset: number,
       def: WordDefinitions,
+      text: string,
+      selectedNodes: SelectedNode[],
     ) {
       try {
-        // Get the matched word's length
         const word = 'hangul' in def.word
           ? (def.word as { hangul: string }).hangul
           : (def.word as { simplified: string }).simplified;
         const matchLength = word.length;
-        const textContent = node.textContent ?? '';
 
-        // Compute end offset, accounting for zero-width characters
-        let endOffset = offset;
-        let charsMatched = 0;
-        while (charsMatched < matchLength && endOffset < textContent.length) {
-          const ch = textContent[endOffset];
-          // Skip zero-width non-joiners and zero-width spaces
-          if (ch === '\u200c' || ch === '\u200b') {
-            endOffset++;
-            continue;
+        // Compute highlight length accounting for zero-width chars (old code pattern)
+        let highlightLength = 0;
+        for (let i = 0; i < matchLength; i++) {
+          while (
+            text[highlightLength] === '\u200c' ||
+            text[highlightLength] === '\u200b'
+          ) {
+            highlightLength++;
           }
-          charsMatched++;
-          endOffset++;
+          highlightLength++;
         }
 
-        if (endOffset <= offset) return;
+        // Find which node the end of the highlight falls in
+        let endNode: Node | null = null;
+        let endOffset = 0;
+        let totalOffset = 0;
+
+        for (const sn of selectedNodes) {
+          const nextBoundary = totalOffset + sn.offset;
+          if (nextBoundary >= highlightLength + startOffset) {
+            endNode = sn.node;
+            endOffset = startOffset + highlightLength - totalOffset;
+            break;
+          }
+          totalOffset = nextBoundary;
+        }
+
+        if (!endNode) return;
 
         const selection = window.getSelection();
         if (!selection) return;
 
         const range = document.createRange();
-        range.setStart(node, offset);
-        range.setEnd(node, Math.min(endOffset, textContent.length));
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
 
         selection.removeAllRanges();
         selection.addRange(range);
@@ -160,6 +255,86 @@ export default defineContentScript({
       rangeNode: Node;
       rangeOffset: number;
       rect: DOMRect;
+      selectedNodes: SelectedNode[];
+    }
+
+    /**
+     * Find the next text node in document order after `previous`,
+     * starting from `root`. Uses NodeIterator to walk the DOM tree.
+     * Ported from old code's findNextTextNode.
+     */
+    function findNextTextNode(
+      root: Node | null,
+      previous: Node,
+    ): Node | null {
+      if (root === null) return null;
+
+      const nodeIterator = document.createNodeIterator(
+        root,
+        NodeFilter.SHOW_TEXT,
+        null,
+      );
+
+      let node = nodeIterator.nextNode();
+      while (node !== previous) {
+        node = nodeIterator.nextNode();
+        if (node === null) {
+          return findNextTextNode(root.parentNode, previous);
+        }
+      }
+
+      const result = nodeIterator.nextNode();
+      if (result !== null) {
+        return result;
+      } else {
+        return findNextTextNode(root.parentNode, previous);
+      }
+    }
+
+    /**
+     * Collect forward-looking text from a text node + offset, walking
+     * across sibling text nodes via NodeIterator. Returns both the
+     * collected text and the list of nodes touched (for highlighting).
+     * Ported from old code's getHoveredText + getTextFromSingleNode.
+     */
+    interface SelectedNode {
+      node: Node;
+      offset: number;
+    }
+
+    function getHoveredText(
+      startNode: Node,
+      offset: number,
+      maxLength: number,
+    ): { text: string; selectedNodes: SelectedNode[] } {
+      const selectedNodes: SelectedNode[] = [];
+
+      if (startNode.nodeType !== Node.TEXT_NODE) {
+        return { text: '', selectedNodes };
+      }
+
+      const startData = startNode.textContent ?? '';
+      const endIndex = Math.min(startData.length, offset + maxLength);
+      let text = startData.substring(offset, endIndex);
+      selectedNodes.push({ node: startNode, offset: endIndex });
+
+      let nextNode: Node | null = startNode;
+      while (
+        text.length < maxLength &&
+        (nextNode = findNextTextNode(
+          nextNode.parentNode,
+          nextNode,
+        )) !== null
+      ) {
+        if (nextNode.nodeName === '#text') {
+          const nodeData = nextNode.textContent ?? '';
+          const nodeEnd = Math.min(maxLength - text.length, nodeData.length);
+          selectedNodes.push({ node: nextNode, offset: nodeEnd });
+          text += nodeData.substring(0, nodeEnd);
+        }
+      }
+
+      return { text, selectedNodes };
     }
 
     function getCharAtPoint(
@@ -247,13 +422,16 @@ export default defineContentScript({
         rect = new DOMRect(x, y, 0, 16);
       }
 
-      const lookupText = (rangeNode.textContent ?? '').substring(rangeOffset, rangeOffset + 12);
+      // Collect up to 15 characters of forward-looking text, walking across
+      // sibling text nodes. Old code used maxLength=15 in parseTextNodes.
+      const { text: lookupText, selectedNodes } = getHoveredText(rangeNode, rangeOffset, 15);
       return {
         char: (rangeNode.textContent ?? '')[rangeOffset],
         text: lookupText,
         rangeNode,
         rangeOffset,
         rect,
+        selectedNodes,
       };
     }
 
@@ -278,27 +456,29 @@ export default defineContentScript({
       const container = document.createElement('div');
       container.id = 'inkah-popup';
 
-      // Position below the hovered text line, with right-edge flip
+      // Position popup relative to hovered text, with edge flipping.
+      // Render offscreen first to measure actual height, then position.
       const popupWidth = 420;
-      const vw = window.innerWidth;
-      const anchorLeft = rect.left;
-      const anchorBottom = rect.bottom + 10; // 10px gap below text
+      const viewWidth = document.documentElement.clientWidth;
+      const viewHeight = window.innerHeight;
+      const gap = 10; // px gap between text and popup
 
-      let leftPos: number;
-      if (anchorLeft + popupWidth + 16 > vw) {
-        // Near right edge — align popup's right edge to the text
-        leftPos = Math.max(8, rect.right - popupWidth);
-      } else {
-        leftPos = Math.max(8, anchorLeft);
+      // Right panel detection: constrain popup width when in right panel
+      let constrainedWidth = popupWidth;
+      if (document.querySelector('.watch-video__hasRightPanel')) {
+        const rightPanel = document.querySelector('#inRightPanel') as HTMLElement | null;
+        if (rightPanel && rect.left > rightPanel.offsetLeft) {
+          constrainedWidth = rightPanel.offsetWidth - 20;
+        }
       }
-      const topPos = anchorBottom;
 
+      // Base styles (positioned offscreen for measurement)
       container.style.cssText = `
         position: fixed;
         z-index: 2147483647;
-        left: ${leftPos}px;
-        top: ${topPos}px;
-        max-width: ${popupWidth}px;
+        left: -9999px;
+        top: -9999px;
+        max-width: ${constrainedWidth}px;
         min-width: 280px;
         max-height: calc(50vh - 28px);
         overflow-y: auto;
@@ -342,7 +522,59 @@ export default defineContentScript({
       });
       container.addEventListener('mouseleave', removePopup);
 
+      // Store the anchor rect for positioning after DOM append
+      container.dataset.anchorTop = String(rect.top);
+      container.dataset.anchorBottom = String(rect.bottom);
+      container.dataset.anchorLeft = String(rect.left);
+      container.dataset.anchorRight = String(rect.right);
+
       return container;
+    }
+
+    /** Position a popup element after it's been appended to the DOM,
+     *  so we can measure its actual height for bottom-edge flipping. */
+    function positionPopup(popup: HTMLElement) {
+      const viewWidth = document.documentElement.clientWidth;
+      const viewHeight = window.innerHeight;
+      const gap = 10;
+      const popupWidth = 420;
+
+      const anchorTop = Number(popup.dataset.anchorTop);
+      const anchorBottom = Number(popup.dataset.anchorBottom);
+      const anchorLeft = Number(popup.dataset.anchorLeft);
+      const anchorRight = Number(popup.dataset.anchorRight);
+
+      const popupHeight = popup.offsetHeight;
+
+      // Horizontal: left-align, flip to right-align if near right edge
+      let leftPos: number;
+      if (anchorLeft + popupWidth + 16 > viewWidth) {
+        leftPos = Math.max(8, anchorRight - popupWidth);
+      } else {
+        leftPos = Math.max(8, anchorLeft);
+      }
+
+      // Right panel constraint
+      if (document.querySelector('.watch-video__hasRightPanel')) {
+        const rightPanel = document.querySelector('#inRightPanel') as HTMLElement | null;
+        if (rightPanel && anchorLeft > rightPanel.offsetLeft) {
+          const constrainedWidth = rightPanel.offsetWidth - 20;
+          leftPos = viewWidth - constrainedWidth - 30;
+        }
+      }
+
+      // Vertical: prefer below, flip above if it would go off-screen
+      let topPos: number;
+      if (anchorBottom + gap + popupHeight > viewHeight) {
+        // Position above the text line — top of popup at (anchorTop - gap - popupHeight)
+        topPos = Math.max(8, anchorTop - gap - popupHeight);
+      } else {
+        // Position below the text line
+        topPos = anchorBottom + gap;
+      }
+
+      popup.style.left = `${leftPos}px`;
+      popup.style.top = `${topPos}px`;
     }
 
     function renderChineseEntry(
@@ -517,9 +749,14 @@ export default defineContentScript({
         }
 
         try {
-          const definitions = await sendToBackground<
-            WordDefinitions[] | null
-          >('search/text', { text: result.text });
+          // Check pre-cache first for instant subtitle hover
+          let definitions = defCache.get(result.text) ?? null;
+          if (!definitions) {
+            definitions = await sendToBackground<
+              WordDefinitions[] | null
+            >('search/text', { text: result.text });
+            defCache.set(result.text, definitions);
+          }
 
           if (definitions && definitions.length > 0) {
             removePopup();
@@ -527,12 +764,15 @@ export default defineContentScript({
             lockedRangeOffset = result.rangeOffset;
             lastPopup = createPopupElement(definitions, result.rect);
             document.body.appendChild(lastPopup);
+            positionPopup(lastPopup);
 
             // Highlight the matched word in the text (old code's setHoverSelection)
             highlightMatchedWord(
               result.rangeNode,
               result.rangeOffset,
               definitions[0],
+              result.text,
+              result.selectedNodes,
             );
           } else {
             removePopup();
@@ -583,12 +823,16 @@ export default defineContentScript({
           removePopup();
           lastPopup = createPopupElement(definitions, rect);
           document.body.appendChild(lastPopup);
+          positionPopup(lastPopup);
         },
         removePopup,
+        precacheSubtitle,
+        getTransliterationForText,
       });
 
       videoService.init();
       videoController.start();
+      activeVideoController = videoController;
 
       // Update controller when settings change
       chrome.storage.onChanged.addListener(() => {
@@ -632,6 +876,7 @@ export default defineContentScript({
           removePopup();
           lastPopup = createPopupElement(definitions, rect);
           document.body.appendChild(lastPopup);
+          positionPopup(lastPopup);
         }
       } catch {}
     });
