@@ -51,6 +51,20 @@ export class SearchComposer {
     return this.searchUseCase.search(payload.text);
   }
 
+  /** Batch lookup: run multiple search/text calls in one round-trip */
+  async handleSearchBatch(payload: {
+    texts: string[];
+  }): Promise<Record<string, WordDefinitions[] | null>> {
+    const results: Record<string, WordDefinitions[] | null> = {};
+    // Run all lookups in parallel within the service worker
+    await Promise.all(
+      payload.texts.map(async (text) => {
+        results[text] = await this.searchUseCase.search(text);
+      }),
+    );
+    return results;
+  }
+
   async handleTokenize(payload: {
     text: string;
   }): Promise<WordDefinitions[] | null> {

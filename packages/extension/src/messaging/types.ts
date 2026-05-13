@@ -13,6 +13,7 @@ export type MessageType =
   | 'user/me'
   | 'user/create'
   | 'search/text'
+  | 'search/batch'
   | 'search/tokenize';
 
 export interface ExtensionMessage {

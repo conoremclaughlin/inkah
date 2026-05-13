@@ -100,6 +100,11 @@ export function createMessageHandler(search: SearchComposer) {
             payload as { text: string; language?: SupportedLanguages },
           );
           break;
+        case 'search/batch':
+          data = await search.handleSearchBatch(
+            payload as { texts: string[] },
+          );
+          break;
         case 'search/tokenize':
           data = await search.handleTokenize(
             payload as { text: string },
