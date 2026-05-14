@@ -708,9 +708,10 @@ export default defineContentScript({
     // --- Event handlers ---
     async function handleMouseMove(e: MouseEvent) {
       if (!(settings?.isEnabled ?? true)) return;
-      if (!isHoverKeyPressed(e)) return;
-
       const target = e.target as HTMLElement;
+      const isSubtitleHover = !!target?.closest?.('.inkahsubs-word');
+      if (!isSubtitleHover && !isHoverKeyPressed(e)) return;
+
       if (target) {
         const tagName = target.tagName?.toLowerCase();
         if (
@@ -724,7 +725,6 @@ export default defineContentScript({
 
       // Don't re-lookup if hovering inside our own popup
       if (lastPopup?.contains(target)) return;
-
 
       if (hoverTimeout) {
         clearTimeout(hoverTimeout);

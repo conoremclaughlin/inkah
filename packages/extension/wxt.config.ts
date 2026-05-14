@@ -1,9 +1,16 @@
 import { defineConfig } from 'wxt';
 
+const debug = process.env.DEBUG === 'true';
+
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   srcDir: 'src',
   outDir: 'dist',
+  vite: () => ({
+    build: {
+      sourcemap: debug ? 'inline' : false,
+    },
+  }),
   manifest: {
     name: 'Inkah: Chinese & Korean Pop-up Dictionary',
     description:
