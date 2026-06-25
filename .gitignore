@@ -1,6 +1,7 @@
 node_modules/
 .output/
 .wxt/
+.next/
 test-results/
 dist/
 *.log

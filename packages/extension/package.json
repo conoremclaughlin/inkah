@@ -1,0 +1,43 @@
+{
+  "name": "@inkah/extension",
+  "version": "1.1.0",
+  "description": "Chinese & Korean pop-up dictionary browser extension",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt --browser firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build --browser firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip --browser firefox",
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "classnames": "^2.5.1",
+    "dexie": "^4.0.0",
+    "effector": "^23.4.4",
+    "effector-react": "^23.3.0",
+    "file-saver": "^2.0.5",
+    "lucide-react": "^1.7.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/file-saver": "^2.0.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@wxt-dev/module-react": "^1.1.0",
+    "autoprefixer": "^10.4.17",
+    "fake-indexeddb": "^6.0.0",
+    "postcss": "^8.5.0",
+    "sass": "^1.88.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0",
+    "wxt": "^0.19.0"
+  }
+}

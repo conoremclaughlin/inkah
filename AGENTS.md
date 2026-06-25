@@ -4,34 +4,41 @@ This is the **canonical reference** for all AI agents working in this repository
 
 ## Project Overview
 
-Inkah is an open-source Chinese & Korean pop-up dictionary browser extension. It uses WXT (Vite-based) for building, targets Manifest V3, and stores dictionaries in IndexedDB via Dexie 4.
+Inkah is an open-source Chinese & Korean pop-up dictionary. The repo is an npm workspaces monorepo:
+
+- **`packages/extension`** — Chrome/Firefox browser extension (WXT + Manifest V3 + Dexie 4)
+- **`packages/web`** — Marketing site and docs (Next.js, static export)
 
 ## Architecture
 
 ```
-src/
-  entrypoints/
-    background.ts        # MV3 service worker
-    content.ts           # Content script (injected on all pages)
-    popup/               # Browser action popup (settings)
-  data/
-    schema.ts            # Dexie schema + cache warming
-    dict-cache.ts        # In-memory read-through cache
-    import-dictionaries.ts  # JSON → IndexedDB import pipeline
-    settings.ts          # chrome.storage settings CRUD
-    words.ts             # Word storage (Dexie)
-    sentences.ts         # Sentence storage (Dexie)
-  search/
-    search-chinese.ts    # Chinese lookup (cedict, greedy longest-match)
-    search-korean.ts     # Korean lookup (kedict + vicon + lemmas)
-    search-composer.ts   # Language dispatcher
-  messaging/
-    handler.ts           # Service worker message router
-    client.ts            # Content script → background helper
-    types.ts             # Message type definitions
-  lib/                   # Pure utility functions (parse, detect, convert)
-  test/                  # Unit tests
-e2e/                     # Playwright E2E tests
+packages/
+  extension/
+    src/
+      entrypoints/
+        background.ts        # MV3 service worker
+        content.ts           # Content script (injected on all pages)
+        popup/               # Browser action popup (settings)
+      data/
+        schema.ts            # Dexie schema + cache warming
+        dict-cache.ts        # In-memory read-through cache
+        import-dictionaries.ts  # JSON → IndexedDB import pipeline
+        settings.ts          # chrome.storage settings CRUD
+        words.ts             # Word storage (Dexie)
+        sentences.ts         # Sentence storage (Dexie)
+      search/
+        search-chinese.ts    # Chinese lookup (cedict, greedy longest-match)
+        search-korean.ts     # Korean lookup (kedict + vicon + lemmas)
+        search-composer.ts   # Language dispatcher
+      messaging/
+        handler.ts           # Service worker message router
+        client.ts            # Content script → background helper
+        types.ts             # Message type definitions
+      lib/                   # Pure utility functions (parse, detect, convert)
+      test/                  # Unit tests
+    e2e/                     # Playwright E2E tests
+  web/
+    src/app/                 # Next.js App Router pages
 ```
 
 ### Key Design Decisions
@@ -51,34 +58,41 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full reference on coding style,
 - Strict TypeScript, avoid `any`
 - Angular commit convention: `feat(scope): description`
 - Do not squash commits on merge
-- Co-locate tests in `src/test/`
+- Co-locate tests in `packages/extension/src/test/`
 
 ## Development Commands
 
 ```bash
-npm install            # Install dependencies
-npm run dev            # WXT dev server with hot reload
-npm run build          # Production build (Chrome MV3)
-npm run build:firefox  # Production build (Firefox)
-npm test               # Unit tests (Vitest)
-npm run test:e2e       # E2E tests (Playwright, headless Chrome)
-npm run typecheck      # Type checking
+# Root (delegates to packages)
+npm install            # Install all workspaces
+npm run dev            # Extension dev server with hot reload
+npm run dev:web        # Next.js dev server
+npm run build          # Extension production build (Chrome MV3)
+npm run build:web      # Next.js static export
+npm run build:all      # Build everything
+npm test               # Extension unit tests (Vitest)
+npm run test:e2e       # Extension E2E tests (Playwright)
+npm run typecheck      # Extension type checking
+
+# Package-scoped
+npm -w @inkah/extension run build:firefox   # Firefox build
+npm -w @inkah/web run dev                   # Web dev server
 ```
 
 ## Testing
 
 ### Unit Tests (Vitest)
 
-Tests live in `src/test/`. They use `fake-indexeddb` for Dexie operations and mock `chrome.*` APIs.
+Tests live in `packages/extension/src/test/`. They use `fake-indexeddb` for Dexie operations and mock `chrome.*` APIs.
 
 ```bash
 npm test                          # Run all
-npx vitest run src/test/search-chinese.test.ts  # Run specific
+npm -w @inkah/extension exec vitest run src/test/search-chinese.test.ts  # Run specific
 ```
 
 ### E2E Tests (Playwright)
 
-Tests live in `e2e/`. They build the extension, launch headless Chrome with `--headless=new` (supports extensions), and test the full pipeline.
+Tests live in `packages/extension/e2e/`. They build the extension, launch headless Chrome with `--headless=new` (supports extensions), and test the full pipeline.
 
 ```bash
 npm run build && npm run test:e2e
@@ -106,9 +120,9 @@ Max word lengths: Chinese = 8 characters, Korean = 12 characters. Input capped a
 
 ### Adding a New Language
 
-1. Add language config to `src/lib/available-languages.ts`
-2. Create `search-<lang>.ts` in `src/search/` with the lookup algorithm
-3. Add Unicode detection function to `src/lib/parse-<lang>.ts`
+1. Add language config to `packages/extension/src/lib/available-languages.ts`
+2. Create `search-<lang>.ts` in `packages/extension/src/search/` with the lookup algorithm
+3. Add Unicode detection function to `packages/extension/src/lib/parse-<lang>.ts`
 4. Register in `search-composer.ts`
 5. Add Dexie table in `data/schema.ts` and import logic in `data/import-dictionaries.ts`
 6. Add cache functions in `data/dict-cache.ts`

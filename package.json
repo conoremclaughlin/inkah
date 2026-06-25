@@ -1,44 +1,27 @@
 {
   "name": "inkah",
-  "version": "0.1.0",
-  "description": "Chinese & Korean pop-up dictionary browser extension",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Chinese & Korean pop-up dictionary — browser extension and website",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/conoremclaughlin/inkah"
   },
-  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "wxt",
-    "dev:firefox": "wxt --browser firefox",
-    "build": "wxt build",
-    "build:firefox": "wxt build --browser firefox",
-    "zip": "wxt zip",
-    "zip:firefox": "wxt zip --browser firefox",
-    "test": "vitest",
-    "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "classnames": "^2.3.1",
-    "dexie": "^4.0.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "file-saver": "^2.0.5"
+    "dev": "npm -w @inkah/extension run dev",
+    "dev:web": "npm -w @inkah/web run dev",
+    "build": "npm -w @inkah/extension run build",
+    "build:web": "npm -w @inkah/web run build",
+    "build:all": "npm run build && npm run build:web",
+    "test": "npm -w @inkah/extension run test",
+    "test:e2e": "npm -w @inkah/extension run test:e2e",
+    "typecheck": "npm -w @inkah/extension run typecheck"
   },
   "devDependencies": {
-    "wxt": "^0.19.0",
-    "@wxt-dev/module-react": "^1.1.0",
-    "typescript": "^5.3.3",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/file-saver": "^2.0.5",
-    "vitest": "^3.1.0",
-    "fake-indexeddb": "^5.0.1",
-    "@playwright/test": "^1.42.0",
-    "tailwindcss": "^3.4.1",
-    "postcss": "^8.4.35",
-    "autoprefixer": "^10.4.17",
-    "sass": "^1.71.0"
+    "prettier": "^3.2.0"
   }
 }
