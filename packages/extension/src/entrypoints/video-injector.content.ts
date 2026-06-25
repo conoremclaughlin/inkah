@@ -297,6 +297,6 @@ function initYouTubeInterception() {
         }
       }
     } catch {}
-    origOpen.call(this, method, url);
+    origOpen.apply(this, arguments as any);
   };
 }

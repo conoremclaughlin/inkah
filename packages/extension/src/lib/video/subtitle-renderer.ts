@@ -42,11 +42,11 @@ export class SubtitleRenderer {
     // Listen for subtitle changes
     window.addEventListener(
       'inkahsubsSubtitlesChanged',
-      this.handleSubtitleChange as EventListener,
+      this.handleSubtitleChange,
     );
     window.addEventListener(
       'inkahsubsVideoReady',
-      this.handleVideoReady as EventListener,
+      this.handleVideoReady,
     );
   }
 
@@ -56,11 +56,11 @@ export class SubtitleRenderer {
     this.removeStyles();
     window.removeEventListener(
       'inkahsubsSubtitlesChanged',
-      this.handleSubtitleChange as EventListener,
+      this.handleSubtitleChange,
     );
     window.removeEventListener(
       'inkahsubsVideoReady',
-      this.handleVideoReady as EventListener,
+      this.handleVideoReady,
     );
   }
 
@@ -70,8 +70,8 @@ export class SubtitleRenderer {
     this.removeOverlay();
   };
 
-  private handleSubtitleChange = async (e: CustomEvent) => {
-    const language = e.detail?.language ?? e.detail ?? '';
+  private handleSubtitleChange = async (e: Event) => {
+    const language = (e as CustomEvent).detail?.language ?? (e as CustomEvent).detail ?? '';
     if (!language) {
       this.cues = [];
       this.currentText = '';

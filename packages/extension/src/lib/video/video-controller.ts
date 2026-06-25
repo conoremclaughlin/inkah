@@ -115,11 +115,11 @@ export class VideoController {
 
     window.addEventListener(
       'inkahsubsSubtitlesChanged',
-      this.handleSubtitleChange as EventListener,
+      this.handleSubtitleChange,
     );
     window.addEventListener(
       'inkahsubsVideoReady',
-      this.handleVideoReady as EventListener,
+      this.handleVideoReady,
     );
 
     // Mount settings icon immediately (don't wait for subtitles)
@@ -138,11 +138,11 @@ export class VideoController {
     this.removeStyles();
     window.removeEventListener(
       'inkahsubsSubtitlesChanged',
-      this.handleSubtitleChange as EventListener,
+      this.handleSubtitleChange,
     );
     window.removeEventListener(
       'inkahsubsVideoReady',
-      this.handleVideoReady as EventListener,
+      this.handleVideoReady,
     );
   }
 
@@ -156,8 +156,8 @@ export class VideoController {
     this.unmountAll();
   };
 
-  private handleSubtitleChange = async (e: CustomEvent) => {
-    const language = e.detail?.language ?? e.detail ?? '';
+  private handleSubtitleChange = async (e: Event) => {
+    const language = (e as CustomEvent).detail?.language ?? (e as CustomEvent).detail ?? '';
     console.log('[inkah] Subtitle language changed:', language);
 
     if (!language) {

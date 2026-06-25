@@ -41,9 +41,8 @@ const chromeActionMock = {
   setBadgeBackgroundColor: async () => {},
 };
 
-// @ts-expect-error - mock
 globalThis.chrome = {
   storage: chromeStorageMock,
   runtime: chromeRuntimeMock,
   action: chromeActionMock,
-};
+} as unknown as typeof chrome;

@@ -442,7 +442,7 @@ export default defineContentScript({
       const colors = settings?.toneColors?.[colorMode];
       if (!colors || toneIndex < 0 || toneIndex >= TONE_KEYS.length)
         return null;
-      return (colors as Record<string, string>)[TONE_KEYS[toneIndex]] ?? null;
+      return colors[TONE_KEYS[toneIndex]] ?? null;
     }
 
     // --- Popup rendering ---
@@ -689,10 +689,10 @@ export default defineContentScript({
       // Romanization
       const isTranslitEnabled =
         settings?.isTransliterationEnabled?.ko ?? false;
-      if (isTranslitEnabled && def.transliteration?.romanization) {
+      if (isTranslitEnabled && def.transliteration?.pinyin) {
         const translitSpan = document.createElement('span');
         translitSpan.style.cssText = `font-size: ${Math.max(fontSize - 4, 12)}px; color: ${isDark ? '#999' : '#666'};`;
-        translitSpan.textContent = def.transliteration.romanization;
+        translitSpan.textContent = def.transliteration.pinyin;
         header.appendChild(translitSpan);
       }
 

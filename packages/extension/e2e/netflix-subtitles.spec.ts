@@ -48,7 +48,7 @@ test('content script injects Netflix subtitle service on netflix.com', async () 
   const hasSubtitleStyles = await page.evaluate(() => {
     const styles = document.querySelectorAll('style');
     for (const style of styles) {
-      if (style.textContent?.includes('inkah-subs')) return true;
+      if (style.textContent?.includes('inkahsubs')) return true;
     }
     return false;
   });
@@ -122,7 +122,7 @@ test('YouTube content script initializes on youtube.com', async () => {
   const hasSubtitleStyles = await page.evaluate(() => {
     const styles = document.querySelectorAll('style');
     for (const style of styles) {
-      if (style.textContent?.includes('inkah-subs')) return true;
+      if (style.textContent?.includes('inkahsubs')) return true;
     }
     return false;
   });
