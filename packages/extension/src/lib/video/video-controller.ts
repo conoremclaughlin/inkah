@@ -55,6 +55,7 @@ export class VideoController {
   private autoPause = true;
   private wasAutoPaused = false;
   private enabled = true;
+  private showProgressBar = true;
   private showTransliteration = false;
   private isHoveringSubWord = false; // Prevent re-render while hovering
   private currentSubIndex = -1;
@@ -712,7 +713,12 @@ export class VideoController {
     }));
 
     // Show progress bar
-    content.appendChild(this.makeSettingsToggle('Show progress bar', true, (_v) => {}));
+    content.appendChild(this.makeSettingsToggle('Show progress bar', this.showProgressBar, (v) => {
+      this.showProgressBar = v;
+      if (this.progressBar) {
+        this.progressBar.style.display = v ? '' : 'none';
+      }
+    }));
 
     // Right panel
     content.appendChild(
@@ -896,6 +902,7 @@ export class VideoController {
     if (this.progressBar) return;
     this.progressBar = document.createElement('div');
     this.progressBar.className = 'inkahsubs-progress-bar';
+    if (!this.showProgressBar) this.progressBar.style.display = 'none';
 
     // Center indicator
     const indicator = document.createElement('div');
@@ -906,7 +913,7 @@ export class VideoController {
   }
 
   private updateProgressBar(currentTime: number) {
-    if (!this.progressBar || this.cues.length === 0) return;
+    if (!this.progressBar || !this.showProgressBar || this.cues.length === 0) return;
 
     // Show 30-second window centered on current time
     const windowSize = 30;

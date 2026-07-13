@@ -4,6 +4,7 @@ node_modules/
 .next/
 test-results/
 dist/
+packages/web/out/
 *.log
 
 # OS
