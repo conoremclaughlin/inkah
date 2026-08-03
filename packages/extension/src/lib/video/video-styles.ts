@@ -248,8 +248,11 @@ export const VIDEO_OVERLAY_CSS = `
   height: 54px;
 }
 #youtube .ytp-fullscreen .inkahsubs-settings-container-logo img {
-  width: 40px;
-  height: 40px;
+  /* Same rendered size as windowed mode (which looks right) — the
+     54px hit area stays larger, only the glyph stays 32px */
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 /* Netflix settings dropdown position (old code: netflix.scss) */
@@ -258,11 +261,13 @@ export const VIDEO_OVERLAY_CSS = `
   right: 20px;
 }
 
-/* YouTube settings dropdown position (old code: youtube.scss) */
+/* YouTube settings dropdown position — anchor to the player's right
+   edge so the panel never extends past the window (the icon sits at
+   the far right of the controls) */
 #youtube .inkahsubs-settings-wrapper {
-  bottom: 50px;
-  margin-left: -60px;
-  right: auto;
+  bottom: 60px;
+  right: 12px;
+  margin-left: 0;
 }
 
 /* Settings dropdown wrapper */
