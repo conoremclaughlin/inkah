@@ -26,6 +26,51 @@ function initNetflixInterception() {
   const parseMock = JSON.parse;
   const stringifyMock = JSON.stringify;
 
+  // Known Netflix manifest-request profile strings — used to recognize the
+  // profiles array in requests regardless of property naming (Netflix
+  // renames manifest fields periodically; ported from subadub).
+  const NETFLIX_PROFILES = [
+    'heaac-2-dash',
+    'heaac-2hq-dash',
+    'playready-h264mpl30-dash',
+    'playready-h264mpl31-dash',
+    'playready-h264hpl30-dash',
+    'playready-h264hpl31-dash',
+    'vp9-profile0-L30-dash-cenc',
+    'vp9-profile0-L31-dash-cenc',
+    'dfxp-ls-sdh',
+    'simplesdh',
+    'nflx-cmisc',
+    'BIF240',
+    'BIF320',
+  ];
+
+  function isSubtitlesProperty(key: string, value: unknown[]): boolean {
+    return (
+      key === 'profiles' ||
+      value.some((item) => NETFLIX_PROFILES.includes(item as string))
+    );
+  }
+
+  /** Recursively locate the profiles array in a manifest request object. */
+  function findSubtitlesProperty(obj: any): unknown[] | null {
+    for (const key in obj) {
+      const value = obj[key];
+      if (Array.isArray(value)) {
+        if (isSubtitlesProperty(key, value)) {
+          return value;
+        }
+      }
+      if (value && typeof value === 'object') {
+        const prop = findSubtitlesProperty(value);
+        if (prop) {
+          return prop;
+        }
+      }
+    }
+    return null;
+  }
+
   const inkah: any = {
     hasLoadedOnce: false,
     isLoaded: false,
@@ -35,14 +80,22 @@ function initNetflixInterception() {
   };
   (window as any).inkah = inkah;
 
-  // Hook JSON.parse to capture subtitle track data
+  // Hook JSON.parse to capture subtitle track data.
+  // Netflix has used two manifest shapes over time:
+  //   old: result.timedtexttracks[].ttDownloadables[fmt].urls (object map)
+  //   new: result.textTracks[].downloadables[fmt].urls ([{url}] array)
+  // Detect both here; NetflixService.processSubData normalizes them.
   JSON.parse = function () {
     const data = parseMock.apply(this, arguments as any);
-    if (data?.result?.timedtexttracks) {
-      lastSubtitleData = data.result;
+    const result = data?.result;
+    if (
+      result &&
+      (result.timedtexttracks || (result.movieId && result.textTracks))
+    ) {
+      lastSubtitleData = result;
       // Serialize as JSON string to survive structured cloning across worlds
       try {
-        const serialized = stringifyMock(data.result);
+        const serialized = stringifyMock(result);
         window.dispatchEvent(
           new CustomEvent('inkahsubs_data', { detail: serialized }),
         );
@@ -51,28 +104,19 @@ function initNetflixInterception() {
     return data;
   };
 
-  // Hook JSON.stringify to force Netflix to include all subtitle tracks
-  JSON.stringify = function (response: any) {
-    if (!response) return stringifyMock.apply(this, arguments as any);
+  // Hook JSON.stringify to force WebVTT into manifest requests.
+  // Don't hardcode property paths — Netflix renames them often; find the
+  // profiles array by content and mutate in place (ported from subadub).
+  JSON.stringify = function (value: any) {
     try {
-      const data = parseMock(stringifyMock.apply(this, arguments as any));
-
-      let modified = false;
-      if (data?.params?.showAllSubDubTracks != null) {
-        data.params.showAllSubDubTracks = true;
-        modified = true;
+      if (value && typeof value === 'object') {
+        const prop = findSubtitlesProperty(value);
+        if (prop && !prop.includes('webvtt-lssdh-ios8')) {
+          prop.unshift('webvtt-lssdh-ios8');
+        }
       }
-      if (data?.params?.profiles) {
-        data.params.profiles.push('webvtt-lssdh-ios8');
-        modified = true;
-      }
-
-      return modified
-        ? stringifyMock(data)
-        : stringifyMock.apply(this, arguments as any);
-    } catch {
-      return stringifyMock.apply(this, arguments as any);
-    }
+    } catch {}
+    return stringifyMock.apply(this, arguments as any);
   };
 
   function getPlayer(): any {

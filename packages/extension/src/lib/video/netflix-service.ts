@@ -117,46 +117,57 @@ export class NetflixService implements VideoService {
       }
     }
 
-    // Only process EPISODE and MOVIE types
-    if (!['EPISODE', 'MOVIE'].includes(detail.viewableType)) {
+    // Only filter on viewableType when present (newer manifests omit it)
+    if (
+      detail.viewableType &&
+      !['EPISODE', 'MOVIE'].includes(detail.viewableType)
+    ) {
       return;
     }
 
-    console.log('[inkah] processSubData: movieId=', detail.movieId, 'type=', detail.viewableType);
+    // Netflix manifest shapes: old = timedtexttracks/ttDownloadables,
+    // new = textTracks/downloadables. Handle both.
+    const tracks = detail.timedtexttracks ?? detail.textTracks;
+    if (!detail.movieId || !tracks) return;
+
+    console.log('[inkah] processSubData: movieId=', detail.movieId, 'type=', detail.viewableType ?? '(none)');
 
     this.subCache[detail.movieId] = {};
-    const tracks = detail.timedtexttracks;
-
-    if (!tracks) return;
 
     for (const track of tracks) {
       if (track.isNoneTrack) {
         continue;
       }
 
-      let type = SUB_TYPES[track.rawTrackType];
-      if (typeof type === 'undefined') type = `[${track.rawTrackType}]`;
+      const rawType = (track.rawTrackType ?? '').toLowerCase();
+      let type = SUB_TYPES[rawType];
+      if (typeof type === 'undefined') type = `[${rawType}]`;
 
       // isForcedNarrative = incomplete preview subtitles (only 15-20 lines)
       const lang =
         track.language + type + (track.isForcedNarrative ? '-forced' : '');
 
-      // ttDownloadables (with 's') is the Netflix field name
-      if (!track.ttDownloadables || !track.ttDownloadables[WEBVTT]) {
+      const downloadables = track.ttDownloadables ?? track.downloadables;
+      if (!downloadables || !downloadables[WEBVTT]) {
         continue;
       }
 
-      // Support both old format (downloadUrls) and new format (urls)
+      // urls has been an object map (old), and an array of {url} (new);
+      // downloadUrls is the oldest map variant
       const urls =
-        track.ttDownloadables[WEBVTT].urls ||
-        track.ttDownloadables[WEBVTT].downloadUrls;
-
+        downloadables[WEBVTT].urls || downloadables[WEBVTT].downloadUrls;
       if (!urls) {
         continue;
       }
 
-      // Pick a random CDN URL from the available options
-      this.subCache[detail.movieId][lang] = this.randomProperty(urls);
+      const url = Array.isArray(urls)
+        ? (urls[0]?.url ?? urls[0])
+        : this.randomProperty(urls);
+      if (!url) {
+        continue;
+      }
+
+      this.subCache[detail.movieId][lang] = url;
     }
 
     const cached = Object.keys(this.subCache[detail.movieId]);

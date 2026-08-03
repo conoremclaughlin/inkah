@@ -288,10 +288,14 @@ export class VideoController {
     this.subsContainer = document.createElement('div');
     this.subsContainer.id = 'inkahsubs';
 
-    // Auto-pause: mouseenter/mouseleave on the subtitle container
-    // (old code: center-subs.tsx lines 258-293, 333-335)
-    this.subsContainer.addEventListener('mouseenter', () => {
+    // Auto-pause when hovering the target-language subtitle lines — that's
+    // where the user studies words and needs a still frame. The secondary
+    // native-language line is just read, so hovering it does NOT pause.
+    this.subsContainer.addEventListener('mouseover', (e) => {
       if (!this.autoPause) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('.inkahsubs-native-line')) return;
+      if (!target.closest('.inkahsubs-subtitles__sub')) return;
       const video = document.querySelector('video');
       if (video && !video.paused) {
         this.wasAutoPaused = true;
