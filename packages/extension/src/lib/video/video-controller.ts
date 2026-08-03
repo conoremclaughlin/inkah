@@ -135,6 +135,7 @@ export class VideoController {
   stop() {
     cancelAnimationFrame(this.animFrame);
     document.documentElement.classList.remove('inkahsubs-enable');
+    this.setActive(false);
     this.unmountAll();
     this.removeStyles();
     window.removeEventListener(
@@ -149,11 +150,19 @@ export class VideoController {
 
   // === Event handlers ===
 
+  /** Mark whether Inkah is actively rendering subtitles. Native subtitle
+   *  hiding CSS requires this class — if our pipeline breaks, native subs
+   *  stay visible instead of leaving the user with nothing. */
+  private setActive(active: boolean) {
+    document.documentElement.classList.toggle('inkahsubs-active', active);
+  }
+
   private handleVideoReady = () => {
     this.cues = [];
     this.nativeCues = [];
     this.currentText = '';
     this.currentSubIndex = -1;
+    this.setActive(false);
     this.unmountAll();
   };
 
@@ -165,6 +174,7 @@ export class VideoController {
       this.cues = [];
       this.nativeCues = [];
       this.currentText = '';
+      this.setActive(false);
       this.unmountAll();
       return;
     }
@@ -184,11 +194,19 @@ export class VideoController {
       }
 
       if (this.cues.length > 0 && this.enabled) {
+        this.setActive(true);
         this.mountAll();
         this.startTimeSync();
         this.renderRightPanel();
+      } else {
+        this.setActive(false);
+        console.warn(
+          '[inkah] No subtitle cues available for', language,
+          '— leaving native subtitles visible',
+        );
       }
     } catch (err) {
+      this.setActive(false);
       console.warn('[inkah] Failed to fetch subtitles:', err);
     }
   };

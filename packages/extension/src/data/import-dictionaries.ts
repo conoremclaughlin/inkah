@@ -160,14 +160,28 @@ async function importKoreanDicts(progress: ImportProgress): Promise<void> {
   }
 }
 
-export async function importDictionariesIfNeeded(): Promise<void> {
+// Guard against concurrent runs (onInstalled + service worker startup
+// can both trigger an import attempt)
+let importInFlight: Promise<void> | null = null;
+
+export function importDictionariesIfNeeded(): Promise<void> {
+  if (!importInFlight) {
+    importInFlight = doImport().finally(() => {
+      importInFlight = null;
+    });
+  }
+  return importInFlight;
+}
+
+async function doImport(): Promise<void> {
   const progress = await getImportProgress();
   if (progress.version >= IMPORT_VERSION) {
-    console.log('[inkah] Dictionaries already imported');
     return;
   }
 
-  // Import preferred language first, then the other
+  // Import preferred language first, then the other.
+  // MV3 service workers can be killed mid-import — per-table progress
+  // flags let the next startup resume where this run left off.
   const langResult = await chrome.storage.local.get(['targetLanguage']);
   const preferred: SupportedLanguages = langResult.targetLanguage ?? 'zh';
 

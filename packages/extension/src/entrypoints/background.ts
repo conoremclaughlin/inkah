@@ -27,11 +27,18 @@ export default defineBackground(() => {
     }
   });
 
-  // Warm the IndexedDB cache on every service worker startup
-  // (service workers are ephemeral in MV3 — this runs each time one spins up)
-  warmDictionaryCache().catch((err) => {
-    console.warn('[inkah] Cache warm failed (dicts may not be imported yet):', err);
-  });
+  // On every service worker startup: resume any incomplete dictionary
+  // import (MV3 workers can be killed mid-import — onInstalled alone
+  // never retries), then warm the in-memory cache.
+  importDictionariesIfNeeded()
+    .catch((err) => {
+      console.error('[inkah] Dictionary import failed:', err);
+    })
+    .finally(() => {
+      warmDictionaryCache().catch((err) => {
+        console.warn('[inkah] Cache warm failed (dicts may not be imported yet):', err);
+      });
+    });
 
   // Message handler for content scripts and popup
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

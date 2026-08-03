@@ -1,11 +1,14 @@
 /** All video overlay CSS — injected once when video subtitles are active */
 export const VIDEO_OVERLAY_CSS = `
-/* === Hide native subtitles (only when Inkah is enabled) === */
-.inkahsubs-enable .player-timedtext { display: none !important; }
-.inkahsubs-enable .image-based-subtitles { display: none !important; }
-.inkahsubs-enable .captions-text { display: none !important; }
-.inkahsubs-enable .ytp-caption-segment { display: none !important; }
-.inkahsubs-enable .ytp-caption-window-container { display: none !important; }
+/* === Hide native subtitles ===
+   Requires BOTH classes: enabled AND actively rendering cues.
+   If our subtitle pipeline fails (no cues), native subs stay visible
+   so the user is never left with no subtitles at all. */
+.inkahsubs-enable.inkahsubs-active .player-timedtext { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .image-based-subtitles { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .captions-text { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .ytp-caption-segment { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .ytp-caption-window-container { display: none !important; }
 
 /* === Center subtitle overlay (hidden unless Inkah enabled) === */
 #inkahsubs {
