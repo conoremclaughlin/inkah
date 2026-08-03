@@ -573,6 +573,11 @@ export default defineContentScript({
         topPos = anchorBottom + gap;
       }
 
+      // Final clamp — never let the popup extend past the viewport edges
+      const actualWidth = popup.offsetWidth;
+      leftPos = Math.max(8, Math.min(leftPos, viewWidth - actualWidth - 8));
+      topPos = Math.max(8, Math.min(topPos, viewHeight - popupHeight - 8));
+
       popup.style.left = `${leftPos}px`;
       popup.style.top = `${topPos}px`;
     }
@@ -763,7 +768,9 @@ export default defineContentScript({
             lockedRangeNode = result.rangeNode;
             lockedRangeOffset = result.rangeOffset;
             lastPopup = createPopupElement(definitions, result.rect);
-            document.body.appendChild(lastPopup);
+            // Append inside the fullscreen element when active — nodes outside
+          // it don't render while fullscreen
+          ((document.fullscreenElement as HTMLElement | null) ?? document.body).appendChild(lastPopup);
             positionPopup(lastPopup);
 
             // Highlight the matched word in the text (old code's setHoverSelection)
@@ -822,7 +829,9 @@ export default defineContentScript({
         showPopup: (definitions: WordDefinitions[], rect: DOMRect) => {
           removePopup();
           lastPopup = createPopupElement(definitions, rect);
-          document.body.appendChild(lastPopup);
+          // Append inside the fullscreen element when active — nodes outside
+          // it don't render while fullscreen
+          ((document.fullscreenElement as HTMLElement | null) ?? document.body).appendChild(lastPopup);
           positionPopup(lastPopup);
         },
         removePopup,
@@ -875,7 +884,9 @@ export default defineContentScript({
           const rect = range.getBoundingClientRect();
           removePopup();
           lastPopup = createPopupElement(definitions, rect);
-          document.body.appendChild(lastPopup);
+          // Append inside the fullscreen element when active — nodes outside
+          // it don't render while fullscreen
+          ((document.fullscreenElement as HTMLElement | null) ?? document.body).appendChild(lastPopup);
           positionPopup(lastPopup);
         }
       } catch {}

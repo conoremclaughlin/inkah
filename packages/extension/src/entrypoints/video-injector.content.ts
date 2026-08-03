@@ -311,9 +311,12 @@ function initYouTubeInterception() {
         (window as any).inkahYtLoaded = true;
         window.dispatchEvent(new CustomEvent('inkahsubsVideoReady'));
 
-        if (subsToggle?.getAttribute('aria-pressed') === 'true') {
-          player.toggleSubtitles?.();
-        } else {
+        // Native captions stay enabled — overlay CSS hides them while
+        // Inkah renders. (Previously we called player.toggleSubtitles()
+        // to turn them off, but the poll below then saw captions "off"
+        // and dispatched an empty language change that wiped the
+        // freshly-loaded cues — killing the right panel and overlay.)
+        if (subsToggle?.getAttribute('aria-pressed') !== 'true') {
           window.dispatchEvent(
             new CustomEvent('inkahsubsSubtitlesChanged', { detail: '' }),
           );

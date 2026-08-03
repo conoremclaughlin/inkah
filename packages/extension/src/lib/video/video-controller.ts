@@ -51,7 +51,7 @@ export class VideoController {
   private showBackground = true;
   private showNativeDoubled = false;
   private nativeLanguage = navigator.language.split('-')[0];
-  private subFontSize = 125;
+  private subFontSize = 110;
   private autoPause = true;
   private wasAutoPaused = false;
   private enabled = true;
