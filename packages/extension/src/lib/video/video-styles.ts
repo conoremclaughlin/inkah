@@ -248,8 +248,8 @@ export const VIDEO_OVERLAY_CSS = `
   height: 54px;
 }
 #youtube .ytp-fullscreen .inkahsubs-settings-container-logo img {
-  width: 28px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
 }
 
 /* Netflix settings dropdown position (old code: netflix.scss) */
@@ -605,6 +605,8 @@ html[id="netflix"] .inkahsubs-enable #inkahsubs {
   right: auto;
   top: auto;
   bottom: auto;
+  /* Breathing room above the recommendations list below the panel */
+  margin-bottom: 16px;
 }
 
 @media (min-width: 1100px) {
