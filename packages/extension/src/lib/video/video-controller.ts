@@ -221,10 +221,16 @@ export class VideoController {
 
   private mountAll() {
     const video = this.service.findVideo();
-    if (!video) return;
+    if (!video) {
+      console.warn('[inkah] mountAll: no <video> element found — overlay not mounted');
+      return;
+    }
 
     const playerContainer = this.findPlayerContainer();
-    if (!playerContainer) return;
+    if (!playerContainer) {
+      console.warn('[inkah] mountAll: no player container found — overlay not mounted');
+      return;
+    }
 
     // Ensure container is positioned
     const style = getComputedStyle(playerContainer);
@@ -251,7 +257,23 @@ export class VideoController {
 
   private findPlayerContainer(): HTMLElement | null {
     if (isNetflix()) {
-      return document.querySelector('.watch-video') as HTMLElement;
+      const container =
+        document.querySelector('.watch-video') ??
+        document.querySelector('.VideoContainer') ??
+        document.querySelector('[data-uia="video-canvas"]');
+      if (container) return container as HTMLElement;
+
+      // Netflix renames player container classes periodically — fall back
+      // to the video element's ancestor so a rename never kills the overlay
+      const video = this.service.findVideo();
+      const fallback = video?.parentElement?.parentElement ?? video?.parentElement;
+      if (fallback) {
+        console.warn(
+          '[inkah] Netflix player container not found by selector — using video ancestor fallback',
+        );
+        return fallback as HTMLElement;
+      }
+      return null;
     }
     if (isYouTube()) {
       return document.getElementById('movie_player');
