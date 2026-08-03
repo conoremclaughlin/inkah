@@ -398,7 +398,11 @@ export class VideoController {
   // === Right Panel ===
 
   private mountRightPanel(container: HTMLElement) {
-    if (this.rightPanel) return;
+    // YouTube's SPA rebuilds the sidebar DOM, which detaches a previously
+    // mounted panel — detect that and re-mount rather than updating an
+    // orphaned node.
+    if (this.rightPanel?.isConnected) return;
+    this.rightPanel?.remove();
     this.rightPanel = document.createElement('div');
     this.rightPanel.id = 'inRightPanel';
 
@@ -742,6 +746,10 @@ export class VideoController {
     content.appendChild(
       this.makeSettingsToggle('Show right panel', this.showRightPanel, (v) => {
         this.showRightPanel = v;
+        // Mount on demand — the panel may never have mounted (toggled
+        // before cues loaded) or been detached by a SPA sidebar rebuild
+        const container = this.findPlayerContainer();
+        if (container) this.mountRightPanel(container);
         this.renderRightPanel();
       }),
     );

@@ -219,6 +219,21 @@ function initNetflixInterception() {
 }
 
 function initYouTubeInterception() {
+  // Handle seek requests from the content script (right panel carets,
+  // progress bar cues). detail is milliseconds — same contract as Netflix.
+  window.addEventListener('inkahsubsSeek', ((event: CustomEvent) => {
+    try {
+      const player = document.getElementById('movie_player') as any;
+      if (player?.seekTo) {
+        player.seekTo(event.detail / 1000, true);
+        player.playVideo?.();
+      } else {
+        const video = document.querySelector('video');
+        if (video) video.currentTime = event.detail / 1000;
+      }
+    } catch {}
+  }) as EventListener);
+
   // Detect URL changes (SPA navigation)
   const origPush = history.pushState;
   history.pushState = function () {
