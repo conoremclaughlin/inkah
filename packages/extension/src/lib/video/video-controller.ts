@@ -51,10 +51,11 @@ export class VideoController {
   private showBackground = true;
   private showNativeDoubled = false;
   private nativeLanguage = navigator.language.split('-')[0];
-  private subFontSize = 125;
+  private subFontSize = 110;
   private autoPause = true;
   private wasAutoPaused = false;
   private enabled = true;
+  private showProgressBar = true;
   private showTransliteration = false;
   private isHoveringSubWord = false; // Prevent re-render while hovering
   private currentSubIndex = -1;
@@ -134,6 +135,7 @@ export class VideoController {
   stop() {
     cancelAnimationFrame(this.animFrame);
     document.documentElement.classList.remove('inkahsubs-enable');
+    this.setActive(false);
     this.unmountAll();
     this.removeStyles();
     window.removeEventListener(
@@ -148,11 +150,19 @@ export class VideoController {
 
   // === Event handlers ===
 
+  /** Mark whether Inkah is actively rendering subtitles. Native subtitle
+   *  hiding CSS requires this class — if our pipeline breaks, native subs
+   *  stay visible instead of leaving the user with nothing. */
+  private setActive(active: boolean) {
+    document.documentElement.classList.toggle('inkahsubs-active', active);
+  }
+
   private handleVideoReady = () => {
     this.cues = [];
     this.nativeCues = [];
     this.currentText = '';
     this.currentSubIndex = -1;
+    this.setActive(false);
     this.unmountAll();
   };
 
@@ -164,6 +174,7 @@ export class VideoController {
       this.cues = [];
       this.nativeCues = [];
       this.currentText = '';
+      this.setActive(false);
       this.unmountAll();
       return;
     }
@@ -183,11 +194,19 @@ export class VideoController {
       }
 
       if (this.cues.length > 0 && this.enabled) {
+        this.setActive(true);
         this.mountAll();
         this.startTimeSync();
         this.renderRightPanel();
+      } else {
+        this.setActive(false);
+        console.warn(
+          '[inkah] No subtitle cues available for', language,
+          '— leaving native subtitles visible',
+        );
       }
     } catch (err) {
+      this.setActive(false);
       console.warn('[inkah] Failed to fetch subtitles:', err);
     }
   };
@@ -202,10 +221,16 @@ export class VideoController {
 
   private mountAll() {
     const video = this.service.findVideo();
-    if (!video) return;
+    if (!video) {
+      console.warn('[inkah] mountAll: no <video> element found — overlay not mounted');
+      return;
+    }
 
     const playerContainer = this.findPlayerContainer();
-    if (!playerContainer) return;
+    if (!playerContainer) {
+      console.warn('[inkah] mountAll: no player container found — overlay not mounted');
+      return;
+    }
 
     // Ensure container is positioned
     const style = getComputedStyle(playerContainer);
@@ -232,7 +257,23 @@ export class VideoController {
 
   private findPlayerContainer(): HTMLElement | null {
     if (isNetflix()) {
-      return document.querySelector('.watch-video') as HTMLElement;
+      const container =
+        document.querySelector('.watch-video') ??
+        document.querySelector('.VideoContainer') ??
+        document.querySelector('[data-uia="video-canvas"]');
+      if (container) return container as HTMLElement;
+
+      // Netflix renames player container classes periodically — fall back
+      // to the video element's ancestor so a rename never kills the overlay
+      const video = this.service.findVideo();
+      const fallback = video?.parentElement?.parentElement ?? video?.parentElement;
+      if (fallback) {
+        console.warn(
+          '[inkah] Netflix player container not found by selector — using video ancestor fallback',
+        );
+        return fallback as HTMLElement;
+      }
+      return null;
     }
     if (isYouTube()) {
       return document.getElementById('movie_player');
@@ -247,10 +288,14 @@ export class VideoController {
     this.subsContainer = document.createElement('div');
     this.subsContainer.id = 'inkahsubs';
 
-    // Auto-pause: mouseenter/mouseleave on the subtitle container
-    // (old code: center-subs.tsx lines 258-293, 333-335)
-    this.subsContainer.addEventListener('mouseenter', () => {
+    // Auto-pause when hovering the target-language subtitle lines — that's
+    // where the user studies words and needs a still frame. The secondary
+    // native-language line is just read, so hovering it does NOT pause.
+    this.subsContainer.addEventListener('mouseover', (e) => {
       if (!this.autoPause) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('.inkahsubs-native-line')) return;
+      if (!target.closest('.inkahsubs-subtitles__sub')) return;
       const video = document.querySelector('video');
       if (video && !video.paused) {
         this.wasAutoPaused = true;
@@ -379,7 +424,11 @@ export class VideoController {
   // === Right Panel ===
 
   private mountRightPanel(container: HTMLElement) {
-    if (this.rightPanel) return;
+    // YouTube's SPA rebuilds the sidebar DOM, which detaches a previously
+    // mounted panel — detect that and re-mount rather than updating an
+    // orphaned node.
+    if (this.rightPanel?.isConnected) return;
+    this.rightPanel?.remove();
     this.rightPanel = document.createElement('div');
     this.rightPanel.id = 'inRightPanel';
 
@@ -712,12 +761,21 @@ export class VideoController {
     }));
 
     // Show progress bar
-    content.appendChild(this.makeSettingsToggle('Show progress bar', true, (_v) => {}));
+    content.appendChild(this.makeSettingsToggle('Show progress bar', this.showProgressBar, (v) => {
+      this.showProgressBar = v;
+      if (this.progressBar) {
+        this.progressBar.style.display = v ? '' : 'none';
+      }
+    }));
 
     // Right panel
     content.appendChild(
       this.makeSettingsToggle('Show right panel', this.showRightPanel, (v) => {
         this.showRightPanel = v;
+        // Mount on demand — the panel may never have mounted (toggled
+        // before cues loaded) or been detached by a SPA sidebar rebuild
+        const container = this.findPlayerContainer();
+        if (container) this.mountRightPanel(container);
         this.renderRightPanel();
       }),
     );
@@ -896,6 +954,7 @@ export class VideoController {
     if (this.progressBar) return;
     this.progressBar = document.createElement('div');
     this.progressBar.className = 'inkahsubs-progress-bar';
+    if (!this.showProgressBar) this.progressBar.style.display = 'none';
 
     // Center indicator
     const indicator = document.createElement('div');
@@ -906,7 +965,7 @@ export class VideoController {
   }
 
   private updateProgressBar(currentTime: number) {
-    if (!this.progressBar || this.cues.length === 0) return;
+    if (!this.progressBar || !this.showProgressBar || this.cues.length === 0) return;
 
     // Show 30-second window centered on current time
     const windowSize = 30;

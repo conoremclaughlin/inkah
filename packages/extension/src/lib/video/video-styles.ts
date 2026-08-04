@@ -1,11 +1,14 @@
 /** All video overlay CSS — injected once when video subtitles are active */
 export const VIDEO_OVERLAY_CSS = `
-/* === Hide native subtitles (only when Inkah is enabled) === */
-.inkahsubs-enable .player-timedtext { display: none !important; }
-.inkahsubs-enable .image-based-subtitles { display: none !important; }
-.inkahsubs-enable .captions-text { display: none !important; }
-.inkahsubs-enable .ytp-caption-segment { display: none !important; }
-.inkahsubs-enable .ytp-caption-window-container { display: none !important; }
+/* === Hide native subtitles ===
+   Requires BOTH classes: enabled AND actively rendering cues.
+   If our subtitle pipeline fails (no cues), native subs stay visible
+   so the user is never left with no subtitles at all. */
+.inkahsubs-enable.inkahsubs-active .player-timedtext { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .image-based-subtitles { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .captions-text { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .ytp-caption-segment { display: none !important; }
+.inkahsubs-enable.inkahsubs-active .ytp-caption-window-container { display: none !important; }
 
 /* === Center subtitle overlay (hidden unless Inkah enabled) === */
 #inkahsubs {
@@ -238,15 +241,26 @@ export const VIDEO_OVERLAY_CSS = `
   margin-top: -0.45em;
 }
 
-/* YouTube sizing */
-#youtube .inkahsubs-settings { width: 36px; height: 36px; }
+/* YouTube sizing — mirror .ytp-button (height: 100% of the controls
+   row + vertical-align: top) so the icon centers at any bar height,
+   windowed or fullscreen */
+#youtube .inkahsubs-settings {
+  width: 36px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: top;
+}
 #youtube .ytp-fullscreen .inkahsubs-settings {
   width: 54px;
-  height: 54px;
 }
 #youtube .ytp-fullscreen .inkahsubs-settings-container-logo img {
-  width: 28px;
-  height: 54px;
+  /* Same rendered size as windowed mode (which looks right) — the
+     54px hit area stays larger, only the glyph stays 32px */
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 /* Netflix settings dropdown position (old code: netflix.scss) */
@@ -255,11 +269,13 @@ export const VIDEO_OVERLAY_CSS = `
   right: 20px;
 }
 
-/* YouTube settings dropdown position (old code: youtube.scss) */
+/* YouTube settings dropdown position — anchor to the player's right
+   edge so the panel never extends past the window (the icon sits at
+   the far right of the controls) */
 #youtube .inkahsubs-settings-wrapper {
-  bottom: 50px;
-  margin-left: -60px;
-  right: auto;
+  bottom: 60px;
+  right: 12px;
+  margin-left: 0;
 }
 
 /* Settings dropdown wrapper */
@@ -602,6 +618,8 @@ html[id="netflix"] .inkahsubs-enable #inkahsubs {
   right: auto;
   top: auto;
   bottom: auto;
+  /* Breathing room above the recommendations list below the panel */
+  margin-bottom: 16px;
 }
 
 @media (min-width: 1100px) {

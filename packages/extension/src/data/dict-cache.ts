@@ -11,6 +11,19 @@ const kedictCache = new Map<string, DictEntry | null>();
 const viconCache = new Map<string, DictEntry | null>();
 const lemmaCache = new Map<string, LemmaEntry | null>();
 
+/**
+ * Drop all read-through caches. Must be called after a dictionary import
+ * completes: lookups served DURING an in-progress import cache misses as
+ * `null`, and those negative entries would otherwise shadow the freshly
+ * imported data until the service worker restarts.
+ */
+export function clearDictionaryCaches(): void {
+  cedictCache.clear();
+  kedictCache.clear();
+  viconCache.clear();
+  lemmaCache.clear();
+}
+
 export async function getCedict(key: string): Promise<DictEntry | undefined> {
   if (cedictCache.has(key)) return cedictCache.get(key) ?? undefined;
   const entry = await db.cedict.get(key);

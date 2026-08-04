@@ -1,6 +1,6 @@
 {
   "name": "@inkah/extension",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Chinese & Korean pop-up dictionary browser extension",
   "private": true,
   "type": "module",
@@ -18,8 +18,6 @@
   "dependencies": {
     "classnames": "^2.5.1",
     "dexie": "^4.0.0",
-    "effector": "^23.4.4",
-    "effector-react": "^23.3.0",
     "file-saver": "^2.0.5",
     "lucide-react": "^1.7.0",
     "react": "^19.2.0",
@@ -33,6 +31,7 @@
     "@wxt-dev/module-react": "^1.1.0",
     "autoprefixer": "^10.4.17",
     "fake-indexeddb": "^6.0.0",
+    "happy-dom": "^20.11.1",
     "postcss": "^8.5.0",
     "sass": "^1.88.0",
     "tailwindcss": "^3.4.1",
