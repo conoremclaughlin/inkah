@@ -241,11 +241,19 @@ export const VIDEO_OVERLAY_CSS = `
   margin-top: -0.45em;
 }
 
-/* YouTube sizing */
-#youtube .inkahsubs-settings { width: 36px; height: 36px; }
+/* YouTube sizing — mirror .ytp-button (height: 100% of the controls
+   row + vertical-align: top) so the icon centers at any bar height,
+   windowed or fullscreen */
+#youtube .inkahsubs-settings {
+  width: 36px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: top;
+}
 #youtube .ytp-fullscreen .inkahsubs-settings {
   width: 54px;
-  height: 54px;
 }
 #youtube .ytp-fullscreen .inkahsubs-settings-container-logo img {
   /* Same rendered size as windowed mode (which looks right) — the
