@@ -1,4 +1,5 @@
 import { db } from './schema';
+import { clearDictionaryCaches } from './dict-cache';
 import { csvToJson, csvToTags } from '../lib/csv-utils';
 import AvailableLanguages from '../lib/available-languages';
 
@@ -196,5 +197,11 @@ async function doImport(): Promise<void> {
   }
 
   await updateImportProgress({ version: IMPORT_VERSION });
+
+  // Lookups served while the import was running cached their misses as
+  // negative entries — drop them so the imported data is visible now
+  // rather than after the next service worker restart.
+  clearDictionaryCaches();
+
   console.log('[inkah] Dictionary import complete!');
 }

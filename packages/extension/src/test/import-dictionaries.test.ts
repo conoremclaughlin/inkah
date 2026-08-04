@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { importDictionariesIfNeeded } from '../data/import-dictionaries';
+import { getKedict } from '../data/dict-cache';
+import { db } from '../data/schema';
 
 /**
  * Regression tests for dictionary import resume behavior.
@@ -71,6 +73,39 @@ describe('importDictionariesIfNeeded', () => {
     expect(
       (result.dictImportProgress as { version: number }).version,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  it('clears negative read-through cache entries after import completes', async () => {
+    // All tables imported but the version stamp didn't land (SW killed at
+    // the last moment) — the resume run skips tables and stamps version
+    await chrome.storage.local.set({
+      dictImportProgress: {
+        version: 0,
+        cedict: true,
+        kedict: true,
+        vicon: true,
+        lemmas: true,
+        tags_zh: true,
+        tags_ko: true,
+      },
+    });
+    fetchMock.mockResolvedValue({
+      json: async () => ({}),
+      text: async () => '',
+    });
+
+    // A lookup during the (not yet complete) import misses and caches null
+    const before = await getKedict('사람');
+    expect(before).toBeUndefined();
+
+    // The imported data lands in the table (simulated directly)...
+    await db.kedict.put({ key: '사람', value: '사람 [saram] /person/' });
+
+    // ...but the poisoned cache would shadow it without invalidation
+    await importDictionariesIfNeeded();
+
+    const after = await getKedict('사람');
+    expect(after?.value).toBe('사람 [saram] /person/');
   });
 
   it('dedupes concurrent invocations', async () => {
