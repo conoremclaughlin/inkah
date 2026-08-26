@@ -85,11 +85,27 @@ beforeAll(async () => {
 
 beforeEach(() => {
   searchResult = null;
+  SETTINGS.hoverKey = 'noKey';
   delete (document as { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
   document.getElementById('inkah-popup')?.remove();
   window.getSelection()?.removeAllRanges();
   document.body.innerHTML = '<p id="text">The quick brown fox jumps</p>';
 });
+
+/** Point the caret hit-test at the given node/offset (null = no hit). */
+function stubCaretHit(getRange: () => Range | null) {
+  (document as unknown as Record<string, unknown>).caretRangeFromPoint =
+    getRange;
+}
+
+function caretAt(node: Node, offset: number): () => Range {
+  return () => {
+    const r = document.createRange();
+    r.setStart(node, offset);
+    r.setEnd(node, offset);
+    return r;
+  };
+}
 
 function textNode(): Node {
   return document.getElementById('text')!.firstChild!;
@@ -119,15 +135,116 @@ describe('user text selection survives Inkah hover (copy/paste regression)', () 
     expect(sel.toString()).toBe('quick brown');
   });
 
-  it('does not clear a user selection when the popup is dismissed by click', async () => {
+  it('does not clear a user selection when the popup is dismissed by click or Escape', async () => {
     const sel = selectText(textNode(), 0, 3);
 
     // click → handleClick → removePopup; must leave the user selection alone
     mouse('click');
     await settle();
+    expect(sel.isCollapsed).toBe(false);
+
+    // Escape → handleKeyDown → removePopup; same rule
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    await settle();
 
     expect(sel.isCollapsed).toBe(false);
     expect(sel.toString()).toBe('The');
+  });
+
+  it('does not replace a held user selection even when hovering matchable target text', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    // The user holds their own selection; the hover lookup WOULD succeed
+    const sel = selectText(zhNode, 2, 5);
+    expect(sel.toString()).toBe('要汪星');
+
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+
+    // No popup, and the selection was not replaced by our '我' highlight
+    expect(document.getElementById('inkah-popup')).toBeNull();
+    expect(sel.toString()).toBe('要汪星');
+  });
+
+  it('a hover timer scheduled before the user selects must not fire into their selection', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    // Timer is scheduled with no selection present...
+    mouse('mousemove', { buttons: 0 });
+    // ...and the user selects text in the same tick, before it fires
+    const sel = selectText(zhNode, 2, 5);
+    await settle();
+
+    expect(document.getElementById('inkah-popup')).toBeNull();
+    expect(sel.toString()).toBe('要汪星');
+  });
+
+  it('keeps the selection AND shows the popup when the user selects target text (selection mode)', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+
+    const sel = selectText(zhNode, 0, 3);
+    mouse('mouseup');
+    await settle();
+
+    // Selection-mode popup appears without eating the selection
+    expect(document.getElementById('inkah-popup')).not.toBeNull();
+    expect(sel.isCollapsed).toBe(false);
+    expect(sel.toString()).toBe('我只要');
+  });
+
+  it('hands selection ownership back to the user on mousedown after our highlight', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    // Our hover highlight becomes active
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+    expect(window.getSelection()!.toString()).toBe('我');
+
+    // The user mousedowns and drag-selects their own text
+    mouse('mousedown', { buttons: 1 });
+    const sel = selectText(zhNode, 2, 5);
+    mouse('mouseup');
+    await settle();
+
+    // Cursor then moves around → the selection now belongs to the user
+    // and must survive any popup cleanup (without the mousedown handoff,
+    // the stale ownership flag would let removePopup clear it)
+    stubCaretHit(() => null);
+    mouse('mousemove', { buttons: 0, clientX: 300 });
+    await settle();
+
+    expect(sel.isCollapsed).toBe(false);
+    expect(sel.toString()).toBe('要汪星');
+  });
+
+  it('respects a configured hover key: no lookup without it, lookup with it', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+    SETTINGS.hoverKey = 'ctrl';
+
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+    expect(document.getElementById('inkah-popup')).toBeNull();
+
+    mouse('mousemove', { buttons: 0, ctrlKey: true });
+    await settle();
+    expect(document.getElementById('inkah-popup')).not.toBeNull();
+    expect(window.getSelection()!.toString()).toBe('我');
   });
 
   it('still creates and cleans up its OWN hover highlight on target text', async () => {
