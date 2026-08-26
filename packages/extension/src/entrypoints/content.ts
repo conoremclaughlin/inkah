@@ -143,6 +143,42 @@ export default defineContentScript({
     // Track the currently hovered text position so popup stays fixed
     let lockedRangeNode: Node | null = null;
     let lockedRangeOffset = -1;
+    // True only while the current browser Selection is OUR hover highlight.
+    // A selection the user made themselves must never be cleared by us.
+    let hoverSelectionActive = false;
+    // The exact range we set as the hover highlight. Before clearing we
+    // verify the live selection still matches it — if the user replaced or
+    // extended it (Cmd/Ctrl+A, Shift+Arrow), the selection is theirs now.
+    let ownedRange: {
+      startContainer: Node;
+      startOffset: number;
+      endContainer: Node;
+      endOffset: number;
+    } | null = null;
+    // Bumped whenever the user takes over (mousedown) or a newer hover
+    // supersedes an older one — in-flight lookups check it after awaiting
+    // so stale async work can never render into a user selection.
+    let hoverGeneration = 0;
+
+    /**
+     * The single source of truth for selection ownership: the live
+     * selection is ours ONLY while it still exactly matches the range we
+     * set. The flag alone is not proof — after a keyboard replacement
+     * (Cmd/Ctrl+A, Shift+Arrow) the flag is stale and the selection
+     * belongs to the user. Every lookup gate and cleanup path must use
+     * this predicate, never the raw flag.
+     */
+    function selectionIsOurs(sel: Selection | null): boolean {
+      if (!hoverSelectionActive || !ownedRange) return false;
+      if (!sel || sel.isCollapsed || sel.rangeCount !== 1) return false;
+      const r = sel.getRangeAt(0);
+      return (
+        r.startContainer === ownedRange.startContainer &&
+        r.startOffset === ownedRange.startOffset &&
+        r.endContainer === ownedRange.endContainer &&
+        r.endOffset === ownedRange.endOffset
+      );
+    }
     // Video controller ref — set later if on Netflix/YouTube
     let activeVideoController: VideoController | null = null;
 
@@ -154,10 +190,19 @@ export default defineContentScript({
       lockedRangeNode = null;
       lockedRangeOffset = -1;
 
-      // Clear hover highlight (old code: selection.empty())
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed) {
-        sel.empty();
+      // Clear hover highlight (old code: selection.empty()) — but only
+      // when the selection is one WE made. Clearing unconditionally wiped
+      // user text selections on every mousemove (copy/paste was impossible).
+      // Verify the live selection still EXACTLY matches the range we set:
+      // if the user extended or replaced it (Cmd/Ctrl+A, Shift+Arrow), it
+      // belongs to them now and must survive.
+      if (hoverSelectionActive) {
+        const sel = window.getSelection();
+        if (selectionIsOurs(sel)) {
+          sel!.empty();
+        }
+        hoverSelectionActive = false;
+        ownedRange = null;
       }
 
       // Auto-pause is now handled by mouseenter/mouseleave on the subs container
@@ -220,6 +265,13 @@ export default defineContentScript({
 
         selection.removeAllRanges();
         selection.addRange(range);
+        hoverSelectionActive = true;
+        ownedRange = {
+          startContainer: range.startContainer,
+          startOffset: range.startOffset,
+          endContainer: range.endContainer,
+          endOffset: range.endOffset,
+        };
       } catch {
         // Silently fail if range creation fails
       }
@@ -731,13 +783,33 @@ export default defineContentScript({
       // Don't re-lookup if hovering inside our own popup
       if (lastPopup?.contains(target)) return;
 
+      // Never run hover lookups while the user is drag-selecting text,
+      // or while they hold a selection of their own (copy/paste flow) —
+      // the hover highlight is rendered via the Selection API and would
+      // destroy their selection.
+      if (e.buttons !== 0) {
+        if (hoverTimeout) clearTimeout(hoverTimeout);
+        return;
+      }
+      const currentSel = window.getSelection();
+      if (currentSel && !currentSel.isCollapsed && !selectionIsOurs(currentSel)) {
+        if (hoverTimeout) clearTimeout(hoverTimeout);
+        return;
+      }
+
       if (hoverTimeout) {
         clearTimeout(hoverTimeout);
       }
 
       const delay = settings?.lookUpDelay ?? 20;
+      const gen = ++hoverGeneration;
 
       hoverTimeout = setTimeout(async () => {
+        // Re-check at fire time: a timer scheduled just before mousedown
+        // must not run mid-drag and clobber the user's growing selection
+        const sel = window.getSelection();
+        if (sel && !sel.isCollapsed && !selectionIsOurs(sel)) return;
+
         const result = getCharAtPoint(e.clientX, e.clientY);
         if (!result) {
           removePopup();
@@ -762,6 +834,14 @@ export default defineContentScript({
             >('search/text', { text: result.text });
             defCache.set(result.text, definitions);
           }
+
+          // Invalidate stale async work: the lookup may have been in
+          // flight while the user took over (mousedown bumps the
+          // generation) or while they made a selection of their own —
+          // rendering now would destroy their selection.
+          if (gen !== hoverGeneration) return;
+          const selNow = window.getSelection();
+          if (selNow && !selNow.isCollapsed && !selectionIsOurs(selNow)) return;
 
           if (definitions && definitions.length > 0) {
             removePopup();
@@ -803,6 +883,17 @@ export default defineContentScript({
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('click', handleClick);
     document.addEventListener('keydown', handleKeyDown);
+    // The user pressing the mouse button takes ownership of the selection:
+    // whatever selection exists after this point is theirs, not our
+    // hover highlight (the browser collapses/replaces it on mousedown).
+    // Bumping the generation also invalidates any in-flight hover lookup.
+    document.addEventListener('mousedown', (e) => {
+      if (!lastPopup?.contains(e.target as Node)) {
+        hoverSelectionActive = false;
+        ownedRange = null;
+        hoverGeneration++;
+      }
+    });
 
     // --- Netflix dark mode auto-detection ---
     const isNetflix = window.location.hostname.includes('netflix.com');
