@@ -159,6 +159,26 @@ export default defineContentScript({
     // supersedes an older one — in-flight lookups check it after awaiting
     // so stale async work can never render into a user selection.
     let hoverGeneration = 0;
+
+    /**
+     * The single source of truth for selection ownership: the live
+     * selection is ours ONLY while it still exactly matches the range we
+     * set. The flag alone is not proof — after a keyboard replacement
+     * (Cmd/Ctrl+A, Shift+Arrow) the flag is stale and the selection
+     * belongs to the user. Every lookup gate and cleanup path must use
+     * this predicate, never the raw flag.
+     */
+    function selectionIsOurs(sel: Selection | null): boolean {
+      if (!hoverSelectionActive || !ownedRange) return false;
+      if (!sel || sel.isCollapsed || sel.rangeCount !== 1) return false;
+      const r = sel.getRangeAt(0);
+      return (
+        r.startContainer === ownedRange.startContainer &&
+        r.startOffset === ownedRange.startOffset &&
+        r.endContainer === ownedRange.endContainer &&
+        r.endOffset === ownedRange.endOffset
+      );
+    }
     // Video controller ref — set later if on Netflix/YouTube
     let activeVideoController: VideoController | null = null;
 
@@ -178,16 +198,8 @@ export default defineContentScript({
       // belongs to them now and must survive.
       if (hoverSelectionActive) {
         const sel = window.getSelection();
-        if (sel && !sel.isCollapsed && sel.rangeCount === 1 && ownedRange) {
-          const r = sel.getRangeAt(0);
-          const stillOurs =
-            r.startContainer === ownedRange.startContainer &&
-            r.startOffset === ownedRange.startOffset &&
-            r.endContainer === ownedRange.endContainer &&
-            r.endOffset === ownedRange.endOffset;
-          if (stillOurs) {
-            sel.empty();
-          }
+        if (selectionIsOurs(sel)) {
+          sel!.empty();
         }
         hoverSelectionActive = false;
         ownedRange = null;
@@ -780,7 +792,7 @@ export default defineContentScript({
         return;
       }
       const currentSel = window.getSelection();
-      if (currentSel && !currentSel.isCollapsed && !hoverSelectionActive) {
+      if (currentSel && !currentSel.isCollapsed && !selectionIsOurs(currentSel)) {
         if (hoverTimeout) clearTimeout(hoverTimeout);
         return;
       }
@@ -796,7 +808,7 @@ export default defineContentScript({
         // Re-check at fire time: a timer scheduled just before mousedown
         // must not run mid-drag and clobber the user's growing selection
         const sel = window.getSelection();
-        if (sel && !sel.isCollapsed && !hoverSelectionActive) return;
+        if (sel && !sel.isCollapsed && !selectionIsOurs(sel)) return;
 
         const result = getCharAtPoint(e.clientX, e.clientY);
         if (!result) {
@@ -829,7 +841,7 @@ export default defineContentScript({
           // rendering now would destroy their selection.
           if (gen !== hoverGeneration) return;
           const selNow = window.getSelection();
-          if (selNow && !selNow.isCollapsed && !hoverSelectionActive) return;
+          if (selNow && !selNow.isCollapsed && !selectionIsOurs(selNow)) return;
 
           if (definitions && definitions.length > 0) {
             removePopup();

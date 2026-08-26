@@ -308,6 +308,32 @@ describe('user text selection survives Inkah hover (copy/paste regression)', () 
     expect(sel.toString()).toBe('我只要汪星人');
   });
 
+  it('a matchable hover after keyboard extension must not replace the user selection', async () => {
+    // Lumen's repro: own highlight 天 → keyboard-extend to 天地玄黃 →
+    // hover the next matchable target. The stale ownership flag must not
+    // let the new lookup's highlightMatchedWord replace the user's range.
+    document.body.innerHTML = '<p id="text">天地玄黃宇宙</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+    const sel = window.getSelection()!;
+    expect(sel.toString()).toBe('天'); // our highlight
+
+    // Keyboard-extend (Shift+Arrow equivalent) — the selection is theirs now
+    selectText(zhNode, 0, 4);
+
+    // Hover a different matchable character
+    stubCaretHit(caretAt(zhNode, 1));
+    mouse('mousemove', { buttons: 0, clientX: 70 });
+    await settle();
+
+    expect(sel.isCollapsed).toBe(false);
+    expect(sel.toString()).toBe('天地玄黃');
+  });
+
   it('still creates and cleans up its OWN hover highlight on target text', async () => {
     document.body.innerHTML = '<p id="text">我只要汪星人</p>';
     const zhNode = textNode();
