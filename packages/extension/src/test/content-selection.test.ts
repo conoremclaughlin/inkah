@@ -21,6 +21,7 @@ const SETTINGS = {
   hoverKey: 'noKey',
   isEnabled: true,
   lookUpDelay: 0,
+  isDarkModeOn: false,
 };
 
 const WO_DEFINITION = {
@@ -91,6 +92,8 @@ beforeEach(() => {
   searchResult = null;
   searchGate = null;
   SETTINGS.hoverKey = 'noKey';
+  SETTINGS.targetLanguage = 'zh';
+  SETTINGS.isDarkModeOn = false;
   delete (document as { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
   document.getElementById('inkah-popup')?.remove();
   window.getSelection()?.removeAllRanges();
@@ -332,6 +335,52 @@ describe('user text selection survives Inkah hover (copy/paste regression)', () 
 
     expect(sel.isCollapsed).toBe(false);
     expect(sel.toString()).toBe('天地玄黃');
+  });
+
+  it('korean headword carries an explicit light color in dark mode (host CSS cannot darken it)', async () => {
+    SETTINGS.targetLanguage = 'ko';
+    SETTINGS.isDarkModeOn = true;
+    document.body.innerHTML = '<p id="text">사람이다</p>';
+    const koNode = textNode();
+    searchResult = [
+      {
+        word: { hangul: '사람' },
+        transliteration: { pinyin: 'saram' },
+        definitions: ['person'],
+      } as unknown as WordDefinitions,
+    ];
+    stubCaretHit(caretAt(koNode, 0));
+
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+
+    const popup = document.getElementById('inkah-popup');
+    expect(popup).not.toBeNull();
+    const headword = [...popup!.querySelectorAll('span')].find(
+      (s) => s.style.fontWeight === 'bold',
+    )!;
+    expect(headword.textContent).toBe('사람');
+    // Inline color must be set — inherited color loses to host-page span
+    // rules, which rendered the hangul dark-on-dark in dark mode
+    expect(['#e0e0e0', 'rgb(224, 224, 224)']).toContain(headword.style.color);
+  });
+
+  it('chinese headword carries an explicit color when tone coloring is off', async () => {
+    SETTINGS.isDarkModeOn = true;
+    document.body.innerHTML = '<p id="text">日月盈昃</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+
+    const popup = document.getElementById('inkah-popup');
+    expect(popup).not.toBeNull();
+    const headword = [...popup!.querySelectorAll('span')].find(
+      (s) => s.style.fontWeight === 'bold',
+    )!;
+    expect(['#e0e0e0', 'rgb(224, 224, 224)']).toContain(headword.style.color);
   });
 
   it('still creates and cleans up its OWN hover highlight on target text', async () => {
