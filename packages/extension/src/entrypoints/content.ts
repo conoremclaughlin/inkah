@@ -671,7 +671,9 @@ export default defineContentScript({
 
       // Characters
       const charSpan = document.createElement('span');
-      charSpan.style.cssText = `font-size: ${fontSize}px; font-weight: bold; margin-right: 6px; line-height: 1.3;`;
+      // Explicit color so non-tone-colored characters can't be overridden
+      // by host-page CSS (tone-colored chars set their own color inline)
+      charSpan.style.cssText = `font-size: ${fontSize}px; font-weight: bold; margin-right: 6px; line-height: 1.3; color: ${isDark ? '#e0e0e0' : '#333333'};`;
 
       for (let i = 0; i < characters.length; i++) {
         const ch = characters[i];
@@ -739,7 +741,9 @@ export default defineContentScript({
         'display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px;';
 
       const wordSpan = document.createElement('span');
-      wordSpan.style.cssText = `font-size: ${fontSize}px; font-weight: bold; line-height: 1.3;`;
+      // Explicit color: inherited color loses to any host-page span rule,
+      // which left the hangul dark-on-dark on some sites in dark mode
+      wordSpan.style.cssText = `font-size: ${fontSize}px; font-weight: bold; line-height: 1.3; color: ${isDark ? '#e0e0e0' : '#333333'};`;
       wordSpan.textContent = word;
       header.appendChild(wordSpan);
 
