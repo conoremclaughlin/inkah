@@ -30,6 +30,9 @@ const WO_DEFINITION = {
 } as unknown as WordDefinitions;
 
 let searchResult: WordDefinitions[] | null = null;
+// When set, search/text responses are held until this promise resolves —
+// used to simulate a lookup already in flight when the user starts selecting
+let searchGate: Promise<void> | null = null;
 
 /** Let the hover setTimeout(0) + async lookup settle. */
 async function settle(ms = 40) {
@@ -70,6 +73,7 @@ beforeAll(async () => {
         case 'settings/get':
           return { data: SETTINGS };
         case 'search/text':
+          if (searchGate) await searchGate;
           return { data: searchResult };
         case 'search/batch':
           return { data: {} };
@@ -85,6 +89,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   searchResult = null;
+  searchGate = null;
   SETTINGS.hoverKey = 'noKey';
   delete (document as { caretRangeFromPoint?: unknown }).caretRangeFromPoint;
   document.getElementById('inkah-popup')?.remove();
@@ -245,6 +250,62 @@ describe('user text selection survives Inkah hover (copy/paste regression)', () 
     await settle();
     expect(document.getElementById('inkah-popup')).not.toBeNull();
     expect(window.getSelection()!.toString()).toBe('我');
+  });
+
+  it('a lookup already in flight when the user selects must not render into their selection', async () => {
+    // Unique text: the content script's defCache persists across tests, and
+    // a cache hit would skip the awaited lookup this test needs to gate
+    document.body.innerHTML = '<p id="text">看电影很有趣</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    // Hold the search response so the lookup sits mid-await
+    let release!: () => void;
+    searchGate = new Promise<void>((r) => {
+      release = r;
+    });
+
+    mouse('mousemove', { buttons: 0 });
+    await settle(10); // hover timer fired; lookup is awaiting the gate
+
+    // The user takes over and selects while the lookup is in flight
+    mouse('mousedown', { buttons: 1 });
+    const sel = selectText(zhNode, 2, 5);
+
+    release();
+    await settle();
+
+    // The stale lookup must not render a popup or replace the selection
+    expect(document.getElementById('inkah-popup')).toBeNull();
+    expect(sel.toString()).toBe('影很有');
+  });
+
+  it('does not clear a selection the user extended via keyboard (Cmd+A / Shift+Arrow)', async () => {
+    document.body.innerHTML = '<p id="text">我只要汪星人</p>';
+    const zhNode = textNode();
+    searchResult = [WO_DEFINITION];
+    stubCaretHit(caretAt(zhNode, 0));
+
+    // Our hover highlight becomes active
+    mouse('mousemove', { buttons: 0 });
+    await settle();
+    const sel = window.getSelection()!;
+    expect(sel.toString()).toBe('我');
+
+    // The user replaces it with a keyboard selection — no mouse involved,
+    // so only exact-range verification can detect the ownership change
+    selectText(zhNode, 0, 6);
+
+    // Popup dismissal must leave the user's keyboard selection intact
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    await settle();
+
+    expect(document.getElementById('inkah-popup')).toBeNull();
+    expect(sel.isCollapsed).toBe(false);
+    expect(sel.toString()).toBe('我只要汪星人');
   });
 
   it('still creates and cleans up its OWN hover highlight on target text', async () => {
